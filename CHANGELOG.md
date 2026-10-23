@@ -4,8 +4,12 @@
 
 ## Unreleased
 
-- `CI sharding`: macOS distributes its serialized test files across two deterministic jobs to avoid the observed 30-minute whole-job overrun. A checked inventory includes every test file exactly once, with real-process tests isolated on one shard and the local Pi CLI on PATH. Test assertions, per-test deadlines and the job budget are unchanged; publication still requires every platform/shard check to pass.
-- `CI diagnostics`: The passive child-process exit regression reports bounded lifecycle stage timings and active resource types, including import/startup progress and natural-exit events, with separate parent shutdown markers. Diagnostics add no referenced timer, expose no fixture credentials or paths, and leave existing assertions and deadlines unchanged.
+## 0.57.9: Reply Safety and CI Recovery
+
+- `Recipient safety`: Ships the containment prepared for unpublished 0.57.8: a refused follower reply no longer immediately reruns its whole command handler and repeats earlier effects. The original input stays unchanged in durable retry state, without silent completion. Automatic reply relocation remains withdrawn; stale-Thread commands may still retry and ordinary execution remains at-least-once.
+- `Follower refusals`: Structured bus acknowledgements identify requests blocked before Telegram API delegation, without granting resend authority. Legacy error text, mismatched methods and lost acknowledgements cannot prove non-execution. Reply chunks keep their captured destination and ownership; refused chunks acquire no message ownership.
+- `CI sharding`: macOS distributes its serialized test files across two deterministic jobs to avoid the measured whole-job overrun. A checked inventory includes every file exactly once, with real-process tests isolated and the local Pi CLI on PATH. Assertions, test deadlines and the 30-minute job budget are unchanged; publication requires every platform and shard to pass.
+- `Process diagnostics`: Child-exit checks report bounded lifecycle timings and active resource types without logging fixture credentials or paths or adding referenced timers. Import, startup and natural-exit stages can now distinguish future failures. The original macOS child timeout remains unexplained; passing traces do not establish its cause.
 
 ## 0.57.8: Reply Recovery Safety
 
