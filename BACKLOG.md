@@ -2,10 +2,6 @@
 
 _This file owns unresolved project work only. Completed behavior belongs in `CHANGELOG.md`; durable contracts belong in `AGENTS.md` and `/docs`._
 
-## Request-identity hotfix publication
-
-- [ ] Publish the 0.57.10 candidate containing completed follower request-identity hardening and bounded Windows fixture diagnostics through the guarded next-patch path. Recheck registry/version eligibility, require fresh release-candidate platform/shard checks, and let the owning tag workflow publish. Preserve existing tags and history. Reply-only recovery is still absent, and neither historical platform timeout is claimed fixed.
-
 ## Disposable Thread live acceptance
 
 - [ ] After separate operator authorization, use disposable Telegram tabs to check leader Settings review/Back, one confirmed cleanup of an inactive slotless binding, preservation of its replacement letter holder, and visible outcome/recovery copy. Native filesystem and injected-transport tests do not prove live Telegram/client or native Windows acceptance. Never use production history as the disposable fixture.
