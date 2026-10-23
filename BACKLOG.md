@@ -2,11 +2,11 @@
 
 _This file owns unresolved project work only. Completed behavior belongs in `CHANGELOG.md`; durable contracts belong in `AGENTS.md` and `/docs`._
 
-## Next containment hotfix
+## Containment hotfix publication blocked
 
-Ship the handler-replay containment and structured refusal evidence without activating reply relocation or the larger orphan-tab routing change. The remaining recovery work stays separate; ordinary retries are still at-least-once and a stuck `/start` may remain retryable.
+The 0.57.8 candidate passed its three-platform pre-merge checks, was merged to main and tagged at `7f17c95167c8703444f904ced9e66ee58682b64d`, but the tag workflow failed its isolated macOS process-exit test and skipped publication. No matching GitHub Release or npm version exists; 0.57.7 remains latest. Preserve the tag and merged history. Handler-replay containment and structured refusal evidence are on main, not a completed release. Ordinary retries remain at-least-once and stale-Thread recovery remains unresolved.
 
-- [ ] Publish the prepared 0.57.8 candidate through the `dev` → `main` release route under the existing hotfix-series authorization. Require fresh platform CI, exact merged-tree/version verification, one immutable tag, and successful workflow-owned GitHub/npm publication. Do not claim unrun live acceptance or that the original stale-Thread recovery is solved.
+- [ ] Diagnose the isolated macOS failure under the checkpoint below before selecting a release recovery. Do not silently retry until green, retag, or publish manually. Resume through the owning workflow only with an evidence-based recovery decision; if a new commit is required, retain the existing tag and use the guarded next-patch path unless exact unpublished-tag replacement is separately authorized.
 
 ## Disposable Thread live acceptance
 
@@ -39,6 +39,7 @@ A target-scoped reply refusal cannot prove that a command made no prior effects.
 
 ## macOS process-exit test flake
 
-The macOS job isolates `tests/process-shutdown.test.ts` and runs the remaining files one at a time (deadlines unchanged); three consecutive runs passed where four of five previous tag/main runs had failed. Alone, `pi -p … exits` still took 7–16 s of its 20 s budget on that runner, so the margin is thin and the cause is runner slowness, not a proven handle leak.
+Isolation reduced observed failures but did not eliminate them: the 0.57.8 tag validation failed `Child process sharing the agent dir does not poll while parent owns Telegram lock` even when that file ran alone. The failure was `Child process did not exit. stdout= stderr=` at its existing child deadline; the other seven process tests passed. The identical tree passed the pre-merge macOS matrix. Slow cold import, startup or shutdown, and a retained runtime handle are still competing explanations; current logs cannot distinguish them.
 
-- [ ] Keep watching the macOS job on the next releases. If an isolated child-process test still misses its deadline, capture child start-to-exit timing in CI before changing any budget; do not widen deadlines blindly.
+- [ ] Add bounded child-stage timing and shutdown-handle diagnostics to the failing fixture so the next macOS run distinguishes spawn/import, session startup, session shutdown and post-shutdown exit. Keep assertions and deadlines unchanged, avoid logging credentials/agent paths, and verify diagnostics locally with an injected stall before seeking CI evidence.
+- [ ] Use that evidence to correct the fixture or runtime cause, then require fresh platform CI before resuming the release. Do not widen deadlines or describe the runner as the proven cause without measurement.
