@@ -679,6 +679,14 @@ This inspection authorizes no reload/restart, live-state mutation, fault injecti
 - Generated artifacts stay scoped to the owning thread after leader failover.
 - Diagnostics redact bot tokens, large prompts, attachment paths, and handler output.
 
+### Reply Recovery Ownership Boundary
+
+A destination belongs to the complete delivery operation, not just the outgoing Bot API body. `replies.sendTelegramChunkSequence` captures one target for all chunks and records message ownership against it. Menu state independently retains `chatId`, `threadId` and the returned message ID through `menu-model.createTelegramMenuDelivery`. Its numeric send result cannot report a relocated Thread to the menu owner. Rewriting only a refused send's `message_thread_id` would therefore separate actual delivery from ownership and callback state; moving only later chunks would also split one reply across tabs.
+
+Structured refusal is evidence about one API attempt, not a delivery or command recovery grant. Current delivery propagates that refusal without a replacement send, without editing the target or reply anchor, and without replaying acknowledged chunks. Already acknowledged messages keep their original ownership; the refused message acquires none. This applies to interactive HTML menus, split native Markdown and single Rich Message sections.
+
+Guarded follower delivery must use a recipient-scoped transport that enforces authority at the leader, not serialize a local callback through the ordinary proxy. The existing selected-menu channel is bound to an exact live-rebind operation, source cohort and recipient; a raw journaled command with no matching retained operation cannot borrow that grant. Any future reply-only recovery must establish its own exact authority, keep the destination consistent in delivery and menu ownership, clear stale reply metadata, and refuse relocation after partial publication or an unknown outcome. Handler-replay containment stays enabled until that boundary is proven; this is not an automatic recovery feature.
+
 ## Acceptance Criteria
 
 - [x] The lock semantics are redesigned as Telegram bus leadership with liveness proof and stale takeover rules.
