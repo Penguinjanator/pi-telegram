@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- `Windows CI diagnostics`: The Workspace-gate registration fixture records bounded gate and persistence stage timings, including them in failure context without paths or credentials. It also runs in the standalone Windows lifecycle probe before the full concurrent suite. Existing assertions, response deadline and job budgets are unchanged; instrumentation does not claim to solve the observed timeout.
 - `Follower request identity`: Follower API arguments use one JSON-wire snapshot before registration waits. Later caller mutation no longer changes the issued method/body or relabels a refused target and slow-call method. Ordinary and multipart calls retain wire JSON semantics and authority fences; refusal evidence still grants no resend or whole-command replay.
 
 ## 0.57.9: Reply Safety and CI Recovery
