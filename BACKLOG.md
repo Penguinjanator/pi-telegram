@@ -2,12 +2,6 @@
 
 _This file owns unresolved project work only. Completed behavior belongs in `CHANGELOG.md`; durable contracts belong in `AGENTS.md` and `/docs`._
 
-## Containment hotfix publication blocked
-
-The 0.57.8 candidate passed its three-platform pre-merge checks, was merged to main and tagged at `7f17c95167c8703444f904ced9e66ee58682b64d`, but the tag workflow failed its isolated macOS process-exit test and skipped publication. No matching GitHub Release or npm version exists; 0.57.7 remains latest. Preserve the tag and merged history. Handler-replay containment and structured refusal evidence are on main, not a completed release. Ordinary retries remain at-least-once and stale-Thread recovery remains unresolved.
-
-- [ ] Publish the guarded 0.57.9 candidate for the completed containment and CI correction, preserving the existing tag and merged history. The measured whole-job budget overrun has a validated sharding correction; the original passive-child timeout remains unexplained and deferred, not claimed fixed. Release notes must include the containment absent from the last public version and disclose the stale-Thread recovery limitation. Recheck registry/automation eligibility and require fresh release-candidate platform/shard checks before the owning tag workflow may publish. Do not retry the failed tag, retag, or publish manually.
-
 ## Disposable Thread live acceptance
 
 - [ ] After separate operator authorization, use disposable Telegram tabs to check leader Settings review/Back, one confirmed cleanup of an inactive slotless binding, preservation of its replacement letter holder, and visible outcome/recovery copy. Native filesystem and injected-transport tests do not prove live Telegram/client or native Windows acceptance. Never use production history as the disposable fixture.
