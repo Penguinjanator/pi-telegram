@@ -24,7 +24,6 @@ Evidence (2026-10-23 07:11–07:16): a `/start` sent in a former leader tab move
 
 ## macOS process-exit test flake
 
-The tag-triggered validate job on `macos-26-intel` failed three times for `v0.57.7` (and once on the `0.57.6` main push) in the real-process tests of `tests/process-shutdown.test.ts` (`Child process sharing the agent dir does not poll while parent owns Telegram lock`, `pi -p with Telegram extension and no active lock exits`), each with `did not exit` at its 10–20 s deadline; a fourth unchanged-head rerun passed and the identical tree passed on its PR. The failures are not reproducible on Linux and are unrelated to routing changes, but they gate every release.
+The macOS job isolates `tests/process-shutdown.test.ts` and runs the remaining files one at a time (deadlines unchanged); three consecutive runs passed where four of five previous tag/main runs had failed. Alone, `pi -p … exits` still took 7–16 s of its 20 s budget on that runner, so the margin is thin and the cause is runner slowness, not a proven handle leak.
 
-- [ ] The macOS job now runs `tests/process-shutdown.test.ts` alone before the rest (deadlines unchanged). Confirm over several runs that it stops flaking and read the per-test durations its spec reporter prints; if it still fails alone, the child is genuinely slow or a handle persists. Establish whether the child is slow to start or a handle really keeps it alive on macOS Intel (capture child timing and active handles in CI), then fix the cause or isolate these real-process tests; do not widen deadlines blindly.
-
+- [ ] Keep watching the macOS job on the next releases. If an isolated child-process test still misses its deadline, capture child start-to-exit timing in CI before changing any budget; do not widen deadlines blindly.
