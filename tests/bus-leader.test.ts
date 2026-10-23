@@ -4826,6 +4826,7 @@ test("Bus leader authorizes scoped follower API calls", async () => {
       requestId: "inst-a:denied",
       ok: false,
       message: "Telegram bus API call is not allowed for this follower.",
+      error: { code: "follower-api-not-allowed", method: "deleteMessage" },
     },
   );
   assert.deepEqual(calls, [

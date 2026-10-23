@@ -4189,10 +4189,17 @@ async function handleFollowerApiCall(
       args: envelope.args,
     })
   ) {
-    return rejectTelegramBusRequest(
-      envelope.requestId,
-      TELEGRAM_BUS_FOLLOWER_API_NOT_ALLOWED_MESSAGE,
-    );
+    const apiMethod = getFollowerApiMethodAndBody(envelope).apiMethod;
+    return {
+      ...rejectTelegramBusRequest(
+        envelope.requestId,
+        TELEGRAM_BUS_FOLLOWER_API_NOT_ALLOWED_MESSAGE,
+      ),
+      // Only this pre-dispatch authorizer refusal certifies that the API method was not called.
+      ...(/^[A-Za-z][A-Za-z0-9]{0,63}$/.test(apiMethod)
+        ? { error: { code: "follower-api-not-allowed" as const, method: apiMethod } }
+        : {}),
+    };
   }
   if (!deps.callApi) {
     return rejectTelegramBusRequest(

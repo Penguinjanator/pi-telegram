@@ -14,6 +14,7 @@ import { join } from "node:path";
 
 import type { TelegramBusForeignUpdateSettlement } from "../lib/bus.ts";
 import * as Queue from "../lib/queue.ts";
+import { TelegramApiFollowerNotAllowedError } from "../lib/telegram-api.ts";
 import {
   abandonTelegramDeferredUpdate,
   acquireTelegramUpdateRouting,
@@ -2710,41 +2711,63 @@ test("Admission worker settles an exactly classified terminal delivery failure",
   await worker.stop();
 });
 
-test("Recipient recovery re-runs a refused reply once against the owner's current Thread", async () => {
-  const stale = { chatId: 7, threadId: 99 }, current = { chatId: 7, threadId: 55 };
-  for (const scenario of ["recovered", "second-refusal", "other-error", "no-recovery"] as const) {
-    const storage = createTestUpdateWorkerJournal([{ update_id: 77, message: { message_id: 5, message_thread_id: 99,
-      chat: { id: 7 }, reply_to_message: { message_id: 4 }, text: "/start" } } as never]);
-    const handled: Array<{ threadId: unknown; reply: unknown }> = [];
-    const recoveries: unknown[] = [];
-    const worker = createTelegramUpdateAdmissionWorkerRuntime({
-      journal: storage.journal,
-      hasAuthority: () => true,
-      recordRuntimeEvent: (_category, _error, details) => { recoveries.push(details); },
-      ...(scenario === "no-recovery" ? {} : {
-        recoverRejectedRecipientTarget: (error: unknown) =>
-          (error as { requestTarget?: unknown }).requestTarget ? { rejected: stale, current } : undefined,
-      }),
-      defaultHandle: async (update) => {
-        const message = update.message as { message_thread_id?: number; reply_to_message?: unknown };
-        handled.push({ threadId: message.message_thread_id, reply: message.reply_to_message });
-        if (scenario === "other-error") throw new Error("transient");
-        if (message.message_thread_id !== 55 || scenario === "second-refusal")
-          throw Object.assign(new Error("Telegram bus API call is not allowed for this follower."), { requestTarget: stale });
-      },
-    });
+test("A refused recipient reply retains journal evidence without immediately replaying command effects", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "telegram-refused-recipient-"));
+  const original = {
+    update_id: 77,
+    message: {
+      message_id: 5, message_thread_id: 99, chat: { id: 7 },
+      reply_to_message: { message_id: 4 }, text: "/start",
+    },
+  };
+  const journal = createTelegramUpdateJournalStore({
+    path: join(directory, "journal.json"),
+    botIdentity: createTelegramUpdateJournalBotIdentity({ botToken: "refused-recipient" }),
+  });
+  let committedEffects = 0;
+  let terminalChecks = 0;
+  // The former internal recovery port must not restore handler replay even in a retained caller configuration.
+  const obsoleteRecovery = {
+    recoverRejectedRecipientTarget: () => ({
+      rejected: { chatId: 7, threadId: 99 }, current: { chatId: 7, threadId: 55 },
+    }),
+  };
+  const worker = createTelegramUpdateAdmissionWorkerRuntime({
+    ...obsoleteRecovery,
+    journal,
+    hasAuthority: () => true,
+    getNowMs: () => 1_000,
+    defaultHandle: async (update) => {
+      committedEffects += 1;
+      assert.deepEqual(update, original);
+      throw new TelegramApiFollowerNotAllowedError(
+        "Telegram bus API call is not allowed for this follower.",
+        { chatId: 7, threadId: 99 },
+      );
+    },
+    settleTerminalExecutionFailure: async () => {
+      terminalChecks += 1;
+      return false;
+    },
+  });
+  try {
+    journal.appendBatch([original]);
     worker.start("ctx");
     await worker.waitForDrain();
-    if (scenario === "recovered") {
-      assert.deepEqual(handled, [{ threadId: 99, reply: { message_id: 4 } }, { threadId: 55, reply: undefined }]);
-      assert.deepEqual(storage.getUpdateIds(), []);
-      assert.equal(recoveries.length, 1);
-    } else {
-      assert.equal(handled.length, scenario === "second-refusal" ? 2 : 1, scenario);
-      assert.deepEqual(storage.getUpdateIds(), [77], "A failed recovery keeps the durable retry state");
-      assert.equal(storage.getEntries()[0]?.state, "retry-wait");
-    }
+    assert.equal(committedEffects, 1, "A refused reply cannot authorize immediate handler re-entry");
+    assert.equal(terminalChecks, 1);
+    const entry = journal.read().entries[0]!;
+    assert.deepEqual(entry.update, original, "The saved source is neither retargeted nor discarded");
+    assert.equal(entry.state, "retry-wait");
+    assert.equal(entry.failure?.attemptCount, 1);
+    assert.ok(entry.nextRetryAtMs! > 1_000);
+    worker.signal();
+    await worker.waitForDrain();
+    assert.equal(committedEffects, 1, "Signals before the durable retry deadline cannot replay effects");
+    assert.equal(worker.getState().retryWaitCount, 1);
+  } finally {
     await worker.stop();
+    await rm(directory, { recursive: true, force: true });
   }
 });
 

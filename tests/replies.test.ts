@@ -45,7 +45,7 @@ import {
 import { createAgentStartDedupHook } from "../lib/lifecycle.ts";
 import { createTelegramActivityPublicationRuntime } from "../lib/activity.ts";
 import { createTelegramThreadTarget } from "../lib/target.ts";
-import { createDefaultTelegramBridgeApiRuntime, TelegramApiAuthorityError, TelegramApiCommitUnknownError } from "../lib/telegram-api.ts";
+import { createDefaultTelegramBridgeApiRuntime, TelegramApiAuthorityError, TelegramApiCommitUnknownError, TelegramApiFollowerNotAllowedError } from "../lib/telegram-api.ts";
 import { createTelegramBusAwareApiRuntime } from "../lib/bus-api.ts";
 
 type RenderedFenceSurface = "plain" | "interactive" | "edit" | "html" | "native" | "rich";
@@ -212,6 +212,48 @@ for (const surface of ["interactive", "edit", "rich"] as const) {
       assert.deepEqual(f.requests, []); assert.deepEqual(f.owned, []); assert.deepEqual(f.ipc, []);
     } finally { f.restore(); }
   });
+}
+
+for (const surface of ["interactive", "native", "rich"] as const) {
+  for (const refusedChunk of surface === "rich" ? [0] : [0, 1]) {
+    test(`Reply refusal preserves ${surface} ownership and stops at chunk ${refusedChunk} without relocation`, async () => {
+      const target = { chatId: 7, threadId: 42 };
+      const options = { target, replyToMessageId: 21 };
+      const requests: Array<{ method: string; body: Record<string, unknown> }> = [];
+      const owned: Array<{ chatId: number; messageId: number; target?: { chatId: number; threadId?: number } }> = [];
+      let rejection: TelegramApiFollowerNotAllowedError | undefined;
+      const send = async (method: string, body: Record<string, unknown>) => {
+        const index = requests.length;
+        requests.push({ method, body: structuredClone(body) });
+        if (index === refusedChunk) {
+          rejection = new TelegramApiFollowerNotAllowedError(
+            "Telegram bus API call is not allowed for this follower.", target, method,
+          );
+          throw rejection;
+        }
+        return { message_id: 100 + index };
+      };
+      const runtime = createTelegramRenderedMessageDeliveryRuntime<unknown>({
+        renderTelegramMessage: () => [{ text: "first" }, { text: "tail" }],
+        sendMessage: (body) => send("sendMessage", body),
+        sendRichMessage: (body) => send("sendRichMessage", body),
+        editMessage: async () => { throw new Error("Refusal must not become an edit"); },
+        recordOwnership: (entry) => owned.push(entry),
+      });
+      const issue = () => surface === "interactive"
+        ? runtime.sendInteractiveMessage(7, "menu", "html", {}, options)
+        : surface === "native"
+          ? runtime.sendMarkdownReply(7, 21, "x".repeat(33_000), options)
+          : runtime.sendSectionRichMessage(7, { markdown: "section" }, options);
+      await assert.rejects(issue, (error) => error === rejection && rejection !== undefined);
+      assert.equal(requests.length, refusedChunk + 1, "No replay of earlier chunks or replacement send");
+      assert.ok(requests.every(({ body }) => body.chat_id === 7 && body.message_thread_id === 42));
+      assert.deepEqual(owned, refusedChunk === 0 ? [] : [{ chatId: 7, messageId: 100, target }],
+        "Only acknowledged chunks own messages, in their captured Thread");
+      assert.deepEqual(options, { target: { chatId: 7, threadId: 42 }, replyToMessageId: 21 },
+        "A refusal cannot change the caller's target or reply anchor");
+    });
+  }
 }
 
 test("Reply helpers extract assistant message text and metadata", () => {

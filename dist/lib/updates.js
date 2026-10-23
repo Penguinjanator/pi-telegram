@@ -6359,7 +6359,6 @@ export function createTelegramUpdateAdmissionWorkerRuntime(deps) {
             const typedUpdate = update;
             const prepared = deps.prepareUpdateForExecution?.(typedUpdate) ?? typedUpdate;
             // Journal/source evidence remains the original; only the warm released handler projection changes destination.
-            // Journal/source evidence remains the original; only the warm released handler projection changes destination.
             const projectTo = (destination) => ({ ...prepared,
                 ...(prepared.message ? { message: prepared.message.message_thread_id === destination.threadId ? { ...prepared.message }
                         : withoutTelegramTurnReplyAnchor({ ...prepared.message, message_thread_id: destination.threadId, reply_to_message: undefined }) } : {}),
@@ -6374,17 +6373,8 @@ export function createTelegramUpdateAdmissionWorkerRuntime(deps) {
                 if (await deps.settleTerminalExecutionFailure?.(error)) {
                     return { kind: "complete" };
                 }
-                // The leader refused a reply to a Thread this recipient no longer owns (re-created after the input was journaled).
-                // Re-run once against its current Thread; any other failure, or a second refusal, keeps the ordinary retry state.
-                const recovery = !target ? deps.recoverRejectedRecipientTarget?.(error) : undefined;
-                const message = prepared.message ?? prepared.edited_message;
-                if (recovery && message && message.message_thread_id === recovery.rejected.threadId &&
-                    message.chat?.id === recovery.rejected.chatId && recovery.current.chatId === recovery.rejected.chatId &&
-                    recovery.current.threadId !== recovery.rejected.threadId) {
-                    deps.recordRuntimeEvent?.("inbound-worker", error, { phase: "recipient-target-recovery", updateId: update.update_id,
-                        chatId: recovery.current.chatId, staleThreadId: recovery.rejected.threadId, threadId: recovery.current.threadId });
-                    return await executeUpdate(projectTo(recovery.current), ctx, signal);
-                }
+                // A refused reply proves only that send was not issued, not that the handler made no prior effects.
+                // Leave failure settlement to the worker's retry policy; never re-enter the handler to recover delivery here.
                 throw error;
             }
         },
@@ -6457,9 +6447,6 @@ export function createTelegramUpdateAdmissionLifecycleAssembly(deps) {
                 spendHistoricalInput: undefined,
                 onHeldSourcesPrepared: undefined,
                 prepareUpdateForExecution: deps.follower.prepareUpdateForExecution,
-                ...(deps.follower.recoverRejectedRecipientTarget
-                    ? { recoverRejectedRecipientTarget: deps.follower.recoverRejectedRecipientTarget }
-                    : {}),
             });
         },
         recordRuntimeEvent: deps.recordRuntimeEvent,

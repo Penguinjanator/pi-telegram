@@ -2,6 +2,12 @@
 
 _This file owns unresolved project work only. Completed behavior belongs in `CHANGELOG.md`; durable contracts belong in `AGENTS.md` and `/docs`._
 
+## Next containment hotfix
+
+Ship the handler-replay containment and structured refusal evidence without activating reply relocation or the larger orphan-tab routing change. The remaining recovery work stays separate; ordinary retries are still at-least-once and a stuck `/start` may remain retryable.
+
+- [ ] Publish the prepared 0.57.8 candidate through the `dev` → `main` release route under the existing hotfix-series authorization. Require fresh platform CI, exact merged-tree/version verification, one immutable tag, and successful workflow-owned GitHub/npm publication. Do not claim unrun live acceptance or that the original stale-Thread recovery is solved.
+
 ## Disposable Thread live acceptance
 
 - [ ] After separate operator authorization, use disposable Telegram tabs to check leader Settings review/Back, one confirmed cleanup of an inactive slotless binding, preservation of its replacement letter holder, and visible outcome/recovery copy. Native filesystem and injected-transport tests do not prove live Telegram/client or native Windows acceptance. Never use production history as the disposable fixture.
@@ -17,7 +23,22 @@ The prompt-cache report remains open for the reporter's offered live Anthropic c
 
 Evidence (2026-10-23 07:11–07:16): a `/start` sent in a former leader tab moved into a follower's journal as a raw original. After that follower's Thread was re-created by the restore probe, every execution attempt failed with `Telegram bus API call is not allowed for this follower` and retried every 60 s indefinitely, because the reply targeted a Thread the follower no longer owned. Terminal settlement alone is unsafe: the same rejection can be a benign race during a live-rebind pre-dispatch.
 
-- [ ] Live acceptance: a forwarded command whose follower Thread was re-created is answered in the current Thread (disposable tabs only).
+### Reply-only recovery — next stabilization checkpoint
+
+A target-scoped reply refusal cannot prove that a command made no prior effects. Keep the handler-replay containment while preparing a replacement: unresolved inputs must remain in ordinary durable retry state, not be silently completed or retargeted as whole commands. Ordinary journal execution remains at-least-once, not globally exactly-once.
+
+- [ ] Implement a recipient-scoped reply-only recovery under the [reply ownership boundary](./docs/multi-instance-bus.md#reply-recovery-ownership-boundary), outside the containment hotfix. Ordinary sends return only a message ID, so the menu/delivery owner must participate in any destination change. Reuse selected-menu delivery only with its exact retained live-rebind/source grant; a raw journaled command cannot borrow it. Capture and recheck recipient/profile/session/registration authority at both ends, with no widening of the ordinary proxy.
+- [ ] Prove the reply-only path with the real follower API caller and worker: one replacement send before any reply chunk is acknowledged, consistent callback/message ownership and destination across every chunk, no stale reply anchor, no recovery for deletion/editing/unknown or lost ACKs, and no second send after authority changes. A command effect before a refused reply must execute once within that admission attempt; original journal evidence stays unchanged and diagnostics cannot change a successful outcome. Run typecheck and the full suite at the stable boundary. If these proofs cannot be supplied, retain the input without handler re-entry.
+- [ ] Live acceptance after the reply-only recovery checkpoint: a forwarded command whose follower Thread was re-created is answered in the current Thread (disposable tabs only).
+
+### Remaining routing investigation
+
 - [ ] Find why the temporary tab's selected `/start` stayed unresolved until expiry, and why that Restore moved custody without applying the rebind.
 - [ ] Route an input that arrives in a tab bound to nothing through a fresh temporary routing tab (the All flow) instead of publishing the chooser in the orphan, deleting the orphan with it once nothing unspent remains. Needs its own durable-metadata design.
 - [ ] Live acceptance on disposable tabs only: Cancel on an orphan tab deletes it; a second unspent input keeps it until the last Cancel; a plain `std::map` option button is delivered as an ordinary prompt.
+
+## macOS process-exit test flake
+
+The macOS job isolates `tests/process-shutdown.test.ts` and runs the remaining files one at a time (deadlines unchanged); three consecutive runs passed where four of five previous tag/main runs had failed. Alone, `pi -p … exits` still took 7–16 s of its 20 s budget on that runner, so the margin is thin and the cause is runner slowness, not a proven handle leak.
+
+- [ ] Keep watching the macOS job on the next releases. If an isolated child-process test still misses its deadline, capture child start-to-exit timing in CI before changing any budget; do not widen deadlines blindly.

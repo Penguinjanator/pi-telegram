@@ -338,13 +338,16 @@ export class TelegramApiStaleTargetError extends Error {
         this.requestTarget = { ...requestTarget };
     }
 }
-/** The leader's exact refusal of a follower API call outside that follower's own Thread; carries only the requested target. */
+/** A follower API refusal; legacy text alone does not prove the request was rejected before execution. */
 export class TelegramApiFollowerNotAllowedError extends Error {
     requestTarget;
-    constructor(message, requestTarget) {
+    /** Present only after a structured pre-execution refusal matches the requested API method. */
+    rejectedRequestMethod;
+    constructor(message, requestTarget, rejectedRequestMethod) {
         super(message);
         this.name = "TelegramApiFollowerNotAllowedError";
         this.requestTarget = requestTarget ? { ...requestTarget } : undefined;
+        this.rejectedRequestMethod = rejectedRequestMethod;
     }
 }
 export function getTelegramApiErrorRequestTarget(error) {
