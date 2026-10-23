@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- `CI sharding`: macOS distributes its serialized test files across two deterministic jobs to avoid the observed 30-minute whole-job overrun. A checked inventory includes every test file exactly once, with real-process tests isolated on one shard and the local Pi CLI on PATH. Test assertions, per-test deadlines and the job budget are unchanged; publication still requires every platform/shard check to pass.
 - `CI diagnostics`: The passive child-process exit regression reports bounded lifecycle stage timings and active resource types, including import/startup progress and natural-exit events, with separate parent shutdown markers. Diagnostics add no referenced timer, expose no fixture credentials or paths, and leave existing assertions and deadlines unchanged.
 
 ## 0.57.8: Reply Recovery Safety
