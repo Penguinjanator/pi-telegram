@@ -27,6 +27,7 @@ function runNodeScript(
   stdout: string;
   stderr: string;
 }> {
+  const startedAt = performance.now();
   const child = spawn(
     process.execPath,
     ["--experimental-strip-types", "--input-type=module", "-e", script],
@@ -51,7 +52,7 @@ function runNodeScript(
       child.kill("SIGKILL");
       reject(
         new Error(
-          `Child process did not exit. stdout=${stdout} stderr=${stderr}`,
+          `Child process did not exit. elapsedMs=${Math.round(performance.now() - startedAt)} stdout=${stdout} stderr=${stderr}`,
         ),
       );
     }, options.timeoutMs ?? 20_000);
@@ -65,6 +66,27 @@ function runNodeScript(
       resolve({ code, signal, stdout, stderr });
     });
   });
+}
+
+/** Fixed stage names and resource types only; synchronous writes and exit listeners add no referenced timer or pipe. */
+function processProbePrelude(role: "parent" | "child"): string {
+  return `
+    import { writeSync as writeProcessProbe } from "node:fs";
+    const processProbeStartedAt = performance.now();
+    const traceProcessStage = (stage) => {
+      try {
+        const resources = process.getActiveResourcesInfo()
+          .filter((name) => /^[A-Za-z][A-Za-z0-9]{0,47}$/.test(name)).slice(0, 16);
+        writeProcessProbe(2, "[process-probe] " + JSON.stringify({
+          role: ${JSON.stringify(role)}, stage,
+          elapsedMs: Math.round(performance.now() - processProbeStartedAt), resources,
+        }) + "\\n");
+      } catch { /* Diagnostics cannot change whether the child exits. */ }
+    };
+    process.once("beforeExit", () => traceProcessStage("before-exit"));
+    process.once("exit", () => traceProcessStage("exit"));
+    traceProcessStage("eval");
+  `;
 }
 
 async function waitForFileText(
@@ -242,7 +264,50 @@ async function runPiPrintWithTelegram(
   );
 }
 
-test("Child process sharing the agent dir does not poll while parent owns Telegram lock", async () => {
+test("Process diagnostics preserve natural exit without keeping the child alive", async () => {
+  const result = await runNodeScript(processProbePrelude("child"));
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.signal, null, result.stderr);
+  assert.equal(result.stdout, "");
+  assert.match(result.stderr, /\[process-probe\].*"stage":"eval"/);
+  assert.match(result.stderr, /\[process-probe\].*"stage":"before-exit"/);
+});
+
+test("Process diagnostics identify an injected shutdown stall without exposing fixture secrets", async () => {
+  await assert.rejects(
+    runNodeScript(`
+      ${processProbePrelude("child")}
+      setInterval(() => {}, 60_000);
+      traceProcessStage("shutdown-start");
+    `, {
+      timeoutMs: 3000,
+      env: {
+        PI_CODING_AGENT_DIR: "/private-fixture-path-not-for-diagnostics",
+        PI_TELEGRAM_TEST_PROBE_SECRET: "private-fixture-token-not-for-diagnostics",
+      },
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /Child process did not exit\. elapsedMs=\d+/);
+      assert.doesNotMatch(error.message, /private-fixture-(path|token)-not-for-diagnostics/);
+      const samples = Array.from(error.message.matchAll(/\[process-probe\] (\{[^\n]+\})/g),
+        (match) => JSON.parse(match[1]!) as { role: string; stage: string; elapsedMs: number; resources: string[] });
+      assert.ok(samples.length >= 2 && samples.length <= 3, error.message);
+      assert.equal(samples.at(-1)!.stage, "shutdown-start");
+      assert.ok(samples.at(-1)!.resources.includes("Timeout"));
+      for (const sample of samples) {
+        assert.deepEqual(Object.keys(sample).sort(), ["elapsedMs", "resources", "role", "stage"]);
+        assert.equal(sample.role, "child");
+        assert.ok(Number.isSafeInteger(sample.elapsedMs) && sample.elapsedMs >= 0);
+        assert.ok(sample.resources.length <= 16);
+        assert.ok(sample.resources.every((name) => /^[A-Za-z][A-Za-z0-9]{0,47}$/.test(name)));
+      }
+      return true;
+    },
+  );
+});
+
+test("Child process sharing the agent dir does not poll while parent owns Telegram lock", async (t) => {
   const tempDir = await mkdtemp(join(tmpdir(), "pi-telegram-process-lock-"));
   const markerPath = join(tempDir, "telegram-methods.log");
   const stopPath = join(tempDir, "stop");
@@ -253,6 +318,7 @@ test("Child process sharing the agent dir does not poll while parent owns Telegr
   });
   const extensionUrl = new URL("../index.ts", import.meta.url).href;
   const parentScript = `
+    ${processProbePrelude("parent")}
     import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
     import { join } from "node:path";
 
@@ -308,11 +374,15 @@ test("Child process sharing the agent dir does not poll while parent owns Telegr
       hasPendingMessages: () => false,
       abort: () => {},
     };
+    traceProcessStage("session-start");
     await handlers.get("session_start")?.({}, ctx);
+    traceProcessStage("session-ready");
     const timer = setInterval(async () => {
       if (!existsSync(stopPath)) return;
       clearInterval(timer);
+      traceProcessStage("shutdown-start");
       await handlers.get("session_shutdown")?.({}, ctx);
+      traceProcessStage("shutdown-done");
       process.exit(0);
     }, 20);
     setTimeout(() => process.exit(2), 15_000).unref?.();
@@ -346,6 +416,7 @@ test("Child process sharing the agent dir does not poll while parent owns Telegr
       10_000,
     );
     const childScript = `
+      ${processProbePrelude("child")}
       import { appendFileSync } from "node:fs";
       const markerPath = process.env.PI_TELEGRAM_TEST_METHOD_MARKER;
       globalThis.fetch = async (input) => {
@@ -364,8 +435,11 @@ test("Child process sharing the agent dir does not poll while parent owns Telegr
         getCommands: () => [],
         getThinkingLevel: () => "medium",
       };
+      traceProcessStage("import-start");
       const extension = (await import(${JSON.stringify(extensionUrl)})).default;
+      traceProcessStage("import-done");
       extension(pi);
+      traceProcessStage("extension-ready");
       const ctx = {
         cwd: "/repo/parent-owner",
         hasUI: false,
@@ -378,8 +452,11 @@ test("Child process sharing the agent dir does not poll while parent owns Telegr
         hasPendingMessages: () => false,
         abort: () => {},
       };
+      traceProcessStage("session-start");
       await handlers.get("session_start")?.({}, ctx);
+      traceProcessStage("session-ready");
       await new Promise((resolve) => setImmediate(resolve));
+      traceProcessStage("event-loop-drained");
     `;
     const child = await runNodeScript(childScript, {
       env: {
@@ -390,6 +467,8 @@ test("Child process sharing the agent dir does not poll while parent owns Telegr
       // budget on a loaded Windows runner; the child still must exit naturally.
       timeoutMs: process.platform === "win32" ? 15_000 : 5_000,
     });
+    const probeLines = child.stderr.split("\n").filter((line) => line.startsWith("[process-probe] "));
+    if (probeLines.length) t.diagnostic(probeLines.join("\n"));
     assert.equal(child.code, 0, child.stderr);
     const methods = await readFile(markerPath, "utf8");
     assert.match(methods, /parent:getUpdates/);
