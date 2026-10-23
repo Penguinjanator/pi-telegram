@@ -5090,10 +5090,19 @@ test("Leader assembly blocks Workspace mutations behind a retained retirement fe
   }
 });
 
-test("Leader assembly serializes follower provisioning through its shared Workspace gate", async () => {
+test("Leader assembly serializes follower provisioning through its shared Workspace gate", async (t) => {
   const dir = mkdtempSync(join(tmpdir(), "pi-telegram-workspace-gate-"));
   const socketPath = join(dir, "bus.sock");
   const store = createTelegramTopicTargetStore({ path: join(dir, "state.json") });
+  const startedAt = performance.now(), stages: Array<{ stage: string; elapsedMs: number }> = [];
+  const trace = (stage: string) => {
+    if (stages.length < 24) stages.push({ stage, elapsedMs: Math.round(performance.now() - startedAt) });
+  };
+  const persist = store.persist.bind(store);
+  store.persist = async () => {
+    trace("persist-start");
+    try { await persist(); } finally { trace("persist-end"); }
+  };
   let allowedUserId: number | undefined;
   const calls: string[] = [];
   const runtime = createTelegramBusLeaderRuntimeAssembly({
@@ -5114,7 +5123,9 @@ test("Leader assembly serializes follower provisioning through its shared Worksp
   const held = new Promise<void>((resolve) => { release = resolve; });
   const started = new Promise<void>((resolve) => { entered = resolve; });
   try {
+    trace("start-polling");
     await runtime.startPolling("ctx");
+    trace("polling-ready");
     assert.equal(typeof runtime.captureWorkspaceExternalProtection, "function");
     allowedUserId = 7;
     const blocker = runtime.runWorkspaceOperation!({
@@ -5126,24 +5137,32 @@ test("Leader assembly serializes follower provisioning through its shared Worksp
       await held;
     });
     await started;
+    trace("blocker-entered");
     const registration = sendTelegramBusLocalEnvelope({ socketPath, envelope: {
       kind: "follower.register", requestId: "follower:1",
       registration: { instanceId: "follower", registrationGeneration: "follower:1",
         cwd: "/repo", sessionId: "session-a", connectedAtMs: 1,
         protocol: TEST_BUS_PROTOCOL_IDENTITY },
     } });
+    trace("registration-started");
     await new Promise((resolve) => setTimeout(resolve, 10));
     assert.equal(calls.length, 0);
+    trace("release-blocker");
     release?.();
     await blocker;
+    trace("blocker-finished");
     const response = await registration;
+    trace("registration-acknowledged");
     assert.ok(response?.kind === "bus.ack");
     assert.equal(response.ok, true);
     assert.equal(calls.includes("createForumTopic"), true);
+  } catch (error) {
+    throw new Error(`Workspace gate fixture failed. stages=${JSON.stringify(stages)}`, { cause: error });
   } finally {
     release?.();
     await runtime.stopPolling();
     rmSync(dir, { recursive: true, force: true });
+    t.diagnostic(`Workspace gate fixture stages=${JSON.stringify(stages)}`);
   }
 });
 
