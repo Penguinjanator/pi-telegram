@@ -4,8 +4,11 @@
 
 ## Unreleased
 
-- `Follower refusals`: Structured bus acknowledgements now distinguish requests blocked before Telegram API delegation from errors returned after execution. Legacy error text, mismatched methods and lost acknowledgements cannot certify non-execution or authorize a resend. This adds refusal evidence only; automatic reply relocation remains disabled.
-- `Recipient safety`: A refused follower reply no longer immediately re-runs the whole command handler, which could repeat changes made before the failed send. The original input stays in durable retry state, unchanged and without silent completion. Automatic reply relocation is withheld pending transport-level safety proof; ordinary retries remain at-least-once.
+## 0.57.8: Reply Recovery Safety
+
+- `Recipient safety`: A refused follower reply no longer immediately re-runs the whole command handler, which could repeat changes made before the failed send. The original input stays unchanged in durable retry state, without silent completion. Automatic reply relocation is withdrawn pending transport-level safety proof; a stale-Thread command may still retry and ordinary execution remains at-least-once.
+- `Follower refusals`: Structured bus acknowledgements distinguish requests blocked before Telegram API delegation from errors returned after execution. Legacy error text, mismatched methods and lost acknowledgements cannot certify non-execution or authorize a resend. Reply chunks retain their captured destination and ownership; refused chunks acquire no message ownership.
+- `CI`: macOS runs real-process shutdown tests separately and the remaining test files one at a time, keeping the local Pi CLI on PATH. Assertions and deadlines are unchanged. This reduces observed runner-contention failures without claiming the process-exit flake is eliminated.
 
 ## 0.57.7: Routing Cleanup and Recipient Recovery
 

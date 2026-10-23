@@ -6,7 +6,7 @@ _This file owns unresolved project work only. Completed behavior belongs in `CHA
 
 Ship the handler-replay containment and structured refusal evidence without activating reply relocation or the larger orphan-tab routing change. The remaining recovery work stays separate; ordinary retries are still at-least-once and a stuck `/start` may remain retryable.
 
-- [ ] Prepare the next patch version and canonical release notes, verify the complete release diff including the macOS validation adjustment, and run the guarded release flow under the existing hotfix-series authorization. Require fresh platform CI; do not claim unrun live acceptance or that the original stale-Thread recovery is solved.
+- [ ] Publish the prepared 0.57.8 candidate through the `dev` → `main` release route under the existing hotfix-series authorization. Require fresh platform CI, exact merged-tree/version verification, one immutable tag, and successful workflow-owned GitHub/npm publication. Do not claim unrun live acceptance or that the original stale-Thread recovery is solved.
 
 ## Disposable Thread live acceptance
 
