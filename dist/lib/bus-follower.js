@@ -952,11 +952,14 @@ export function createTelegramBusFollowerApiCaller(deps) {
     const timeoutMs = deps.timeoutMs ?? TELEGRAM_BUS_FOLLOWER_CLIENT_TIMEOUT_MS;
     const slowCallMs = deps.slowCallMs ?? TELEGRAM_BUS_FOLLOWER_API_SLOW_CALL_MS;
     const caller = async (method, args, localOptions, timing) => {
-        const apiMethod = (method === "call" || method === "callMultipart") && typeof args[0] === "string"
-            ? args[0] : method;
         const assertion = localOptions?.assertAuthority;
         const assertCurrent = () => assertTelegramApiCallAuthority(assertion, false);
         assertCurrent();
+        // Match IPC's JSON semantics once, before awaits; send and refusal metadata share this identity.
+        const requestArgs = JSON.parse(JSON.stringify(args));
+        const apiMethod = (method === "call" || method === "callMultipart") && typeof requestArgs[0] === "string"
+            ? requestArgs[0] : method;
+        timing.apiMethod = apiMethod;
         const registration = await resolveTelegramBusFollowerRegistration(deps, timeoutMs);
         timing.registeredAtMs = getNowMs();
         assertCurrent();
@@ -970,7 +973,7 @@ export function createTelegramBusFollowerApiCaller(deps) {
                 instanceId: deps.instanceId,
                 registrationGeneration: registration.generation,
                 method,
-                args,
+                args: requestArgs,
                 sentAtMs: getNowMs(),
             }, assertion ? assertCurrent : undefined);
         }
@@ -1005,8 +1008,8 @@ export function createTelegramBusFollowerApiCaller(deps) {
             response.error.method === apiMethod
             ? apiMethod : undefined;
         if (refusedMethod || message === TELEGRAM_BUS_FOLLOWER_API_NOT_ALLOWED_MESSAGE) {
-            const body = (method === "call" || method === "callMultipart") && isRecord(args[1])
-                ? args[1]
+            const body = (method === "call" || method === "callMultipart") && isRecord(requestArgs[1])
+                ? requestArgs[1]
                 : undefined;
             const chatId = Number(body?.chat_id);
             const threadId = Number(body?.message_thread_id);
@@ -1030,10 +1033,7 @@ export function createTelegramBusFollowerApiCaller(deps) {
         finally {
             const elapsedMs = getNowMs() - startedAtMs;
             if (elapsedMs >= slowCallMs) {
-                const apiMethod = (method === "call" || method === "callMultipart") &&
-                    typeof args[0] === "string"
-                    ? args[0]
-                    : method;
+                const apiMethod = timing.apiMethod ?? method;
                 try {
                     deps.recordRuntimeEvent?.("bus", `Telegram bus follower API call was slow (${elapsedMs}ms).`, {
                         phase: "follower-api-slow",

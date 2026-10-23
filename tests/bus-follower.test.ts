@@ -4669,6 +4669,110 @@ test("Follower API refusal evidence distinguishes pre-dispatch denial from match
   }
 });
 
+for (const method of ["call", "callMultipart"] as const) {
+  for (const phase of ["registration", "serialized"] as const) {
+    test(`Follower API request identity survives ${phase} mutation (${method})`, async () => {
+      const dir = mkdtempSync(join(tmpdir(), "pi-telegram-api-identity-"));
+      const socketPath = join(dir, "bus.sock"), registry = createTelegramBusFollowerRegistry();
+      registry.register({ instanceId: "inst-a", connectedAtMs: 1000,
+        registrationGeneration: "generation-a", target: { chatId: 1, threadId: 42 } });
+      const apiMethod = method === "call" ? "sendMessage" : "sendPhoto";
+      const body = { chat_id: method === "call" ? 1 : "1", message_thread_id: method === "call" ? 2 : "2", text: "original" };
+      const args: unknown[] = [apiMethod, body, ...(method === "callMultipart" ? ["photo", join(dir, "unused.png"), "unused.png"] : [])];
+      let executions = 0, requests = 0;
+      const wire: unknown[][] = [], diagnosticMethods: unknown[] = [];
+      const mutate = () => { args[0] = "deleteMessage"; body.message_thread_id = 99; body.text = "changed"; };
+      const leader = createTelegramBusLeaderEnvelopeHandler({ followerRegistry: registry,
+        authorizeFollowerApiCall: () => false,
+        callApi: () => { executions++; assert.fail("The rejected request cannot reach Telegram"); },
+      });
+      const server = createTelegramBusLocalServer({ socketPath,
+        handleEnvelope: async (envelope) => {
+          assert.equal(envelope.kind, "follower.callApi");
+          if (envelope.kind === "follower.callApi") wire.push(structuredClone(envelope.args));
+          const response = await leader(envelope);
+          if (phase === "serialized") mutate();
+          return response;
+        },
+      });
+      const callApi = createTelegramBusFollowerApiCaller({ socketPath, instanceId: "inst-a", timeoutMs: 1000,
+        createRequestId: () => `inst-a:identity:${++requests}`,
+        getRegistrationGeneration: () => phase === "registration" ? undefined : "generation-a",
+        waitForRegistrationGeneration: async () => { mutate(); return "generation-a"; },
+        slowCallMs: 0,
+        recordRuntimeEvent: (_kind, _message, details) => { diagnosticMethods.push(details?.method); },
+      });
+      try {
+        await server.start();
+        const expected = JSON.parse(JSON.stringify(args));
+        const error = await callApi(method, args).catch((failure: unknown) => failure);
+        assert.equal(executions, 0);
+        assert.deepEqual(wire, [expected], "The one wire attempt must retain the invocation snapshot");
+        assert.ok(error instanceof TelegramApiFollowerNotAllowedError);
+        assert.deepEqual(error.requestTarget, { chatId: 1, threadId: 2 });
+        assert.equal(error.rejectedRequestMethod, apiMethod);
+        assert.deepEqual(diagnosticMethods, [apiMethod]);
+      } finally {
+        await server.stop();
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
+}
+
+for (const phase of ["before-snapshot", "during-snapshot"] as const) {
+  test(`Follower API authority fences request snapshot (${phase})`, async () => {
+    let current = phase !== "before-snapshot", encodes = 0, registrations = 0;
+    const options = { assertAuthority() { if (!current) throw new Error("Execution ended"); } };
+    const body = { toJSON() {
+      encodes++; current = false; options.assertAuthority = () => {};
+      return { chat_id: 1, message_thread_id: 2, text: "not sent" };
+    } };
+    const callApi = createTelegramBusFollowerApiCaller({ socketPath: join(tmpdir(), "unused-identity.sock"), instanceId: "inst-a",
+      createRequestId: () => assert.fail("An invalidated snapshot cannot construct a wire request"),
+      getRegistrationGeneration: () => { registrations++; return "generation-a"; },
+    });
+    await assert.rejects(callApi("call", ["sendMessage", body], options), (error: unknown) => {
+      assert.ok(error instanceof TelegramApiAuthorityError);
+      assert.equal(error.requestIssued, false);
+      return true;
+    });
+    assert.equal(encodes, phase === "before-snapshot" ? 0 : 1);
+    assert.equal(registrations, phase === "before-snapshot" ? 0 : 1);
+  });
+}
+
+test("Follower API refusal identity follows JSON wire semantics", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pi-telegram-api-json-identity-"));
+  const socketPath = join(dir, "bus.sock"), wire: unknown[][] = [];
+  const server = createTelegramBusLocalServer({ socketPath,
+    handleEnvelope: (envelope) => {
+      if (envelope.kind === "follower.callApi") wire.push(structuredClone(envelope.args));
+      return { kind: "bus.ack", requestId: envelope.requestId, ok: false,
+        message: "Telegram bus API call is not allowed for this follower.",
+        error: { code: "follower-api-not-allowed", method: "sendMessage" } };
+    },
+  });
+  const callApi = createTelegramBusFollowerApiCaller({ socketPath, instanceId: "inst-a",
+    createRequestId: () => "inst-a:json-identity", getRegistrationGeneration: () => "generation-a" });
+  let encodes = 0;
+  const body = { chat_id: 1, message_thread_id: 99, toJSON() {
+    encodes++;
+    return { chat_id: 1, message_thread_id: 2, text: "wire" };
+  } };
+  try {
+    await server.start();
+    const error = await callApi("call", ["sendMessage", body]).catch((failure: unknown) => failure);
+    assert.ok(error instanceof TelegramApiFollowerNotAllowedError);
+    assert.deepEqual(wire, [["sendMessage", { chat_id: 1, message_thread_id: 2, text: "wire" }]]);
+    assert.deepEqual(error.requestTarget, { chatId: 1, threadId: 2 });
+    assert.equal(encodes, 1, "Do not re-evaluate caller serialization when interpreting refusal");
+  } finally {
+    await server.stop();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("Bus follower API caller classifies non-idempotent acknowledgement loss as commit-unknown", async () => {
   const dir = mkdtempSync(join(tmpdir(), "pi-telegram-bus-api-ack-loss-"));
   const socketPath = join(dir, "bus.sock");
