@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- `Follower refusals`: Structured bus acknowledgements now distinguish requests blocked before Telegram API delegation from errors returned after execution. Legacy error text, mismatched methods and lost acknowledgements cannot certify non-execution or authorize a resend. This adds refusal evidence only; automatic reply relocation remains disabled.
 - `Recipient safety`: A refused follower reply no longer immediately re-runs the whole command handler, which could repeat changes made before the failed send. The original input stays in durable retry state, unchanged and without silent completion. Automatic reply relocation is withheld pending transport-level safety proof; ordinary retries remain at-least-once.
 
 ## 0.57.7: Routing Cleanup and Recipient Recovery

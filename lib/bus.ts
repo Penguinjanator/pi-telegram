@@ -1260,6 +1260,7 @@ export type TelegramBusEnvelope = (
           | "ledger-overloaded"
           | "incompatible-protocol"
           | "stale-target"
+          | "follower-api-not-allowed"
           | "workspace-binding-unavailable";
         method?: string;
         chatId?: number;
@@ -4148,10 +4149,17 @@ function parseAckEnvelope(
       code === "ledger-overloaded" ||
       code === "incompatible-protocol" ||
       code === "stale-target" ||
+      code === "follower-api-not-allowed" ||
       code === "workspace-binding-unavailable"
     ) {
       const chatId = value.error.chatId;
       const threadId = value.error.threadId;
+      if (
+        code === "follower-api-not-allowed" &&
+        (value.ok || Object.hasOwn(value, "result") ||
+          typeof value.error.method !== "string" ||
+          !/^[A-Za-z][A-Za-z0-9]{0,63}$/.test(value.error.method))
+      ) return undefined;
       if (
         code === "stale-target" &&
         (!Number.isSafeInteger(chatId) || !Number.isSafeInteger(threadId))

@@ -4603,12 +4603,69 @@ test("Bus follower API caller types the leader's refusal of a foreign Thread wit
       .catch((failure: unknown) => failure);
     assert.ok(error instanceof TelegramApiFollowerNotAllowedError);
     assert.deepEqual(error.requestTarget, { chatId: 1, threadId: 2 });
+    assert.equal(error.rejectedRequestMethod, undefined, "Legacy text grants no pre-execution proof");
     const untargeted = await callApi("call", ["getMe", {}]).catch((failure: unknown) => failure);
     assert.ok(untargeted instanceof TelegramApiFollowerNotAllowedError);
     assert.equal(untargeted.requestTarget, undefined);
   } finally {
     await server.stop();
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Follower API refusal evidence distinguishes pre-dispatch denial from matching API error text", async () => {
+  for (const scenario of ["denied", "executed", "lost", "wrong-method", "mutated-method"] as const) {
+    const dir = mkdtempSync(join(tmpdir(), "pi-telegram-api-refusal-proof-"));
+    const socketPath = join(dir, "bus.sock");
+    const registry = createTelegramBusFollowerRegistry();
+    registry.register({
+      instanceId: "inst-a", connectedAtMs: 1000,
+      registrationGeneration: "generation-a", target: { chatId: 1, threadId: 42 },
+    });
+    let executions = 0;
+    let requests = 0;
+    const args: unknown[] = ["sendMessage", { chat_id: 1, message_thread_id: 2, text: "hello" }];
+    const leader = createTelegramBusLeaderEnvelopeHandler({
+      followerRegistry: registry,
+      authorizeFollowerApiCall: () => scenario === "executed",
+      callApi: () => {
+        executions += 1;
+        throw new Error("Telegram bus API call is not allowed for this follower.");
+      },
+    });
+    const server = createTelegramBusLocalServer({
+      socketPath,
+      handleEnvelope: async (envelope) => {
+        const reply = await leader(envelope);
+        if (scenario === "mutated-method") args[0] = "deleteMessage";
+        return (scenario === "wrong-method" || scenario === "mutated-method") && reply?.kind === "bus.ack"
+          ? { ...reply, error: { code: "follower-api-not-allowed", method: "deleteMessage" } }
+          : reply;
+      },
+      shouldDropResponse: () => scenario === "lost",
+    });
+    const callApi = createTelegramBusFollowerApiCaller({
+      socketPath, instanceId: "inst-a", timeoutMs: 100,
+      createRequestId: () => `inst-a:proof:${++requests}`,
+      getRegistrationGeneration: () => "generation-a",
+    });
+    try {
+      await server.start();
+      const error = await callApi("call", args, { assertAuthority: () => {} })
+        .catch((failure: unknown) => failure);
+      assert.equal(executions, scenario === "executed" ? 1 : 0, scenario);
+      if (scenario === "lost") {
+        assert.ok(isTelegramApiCommitUnknownError(error));
+        assert.equal(error instanceof TelegramApiFollowerNotAllowedError, false);
+      } else {
+        assert.ok(error instanceof TelegramApiFollowerNotAllowedError, scenario);
+        assert.deepEqual(error.requestTarget, { chatId: 1, threadId: 2 });
+        assert.equal(error.rejectedRequestMethod, scenario === "denied" ? "sendMessage" : undefined, scenario);
+      }
+    } finally {
+      await server.stop();
+      rmSync(dir, { recursive: true, force: true });
+    }
   }
 });
 

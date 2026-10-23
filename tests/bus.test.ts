@@ -820,6 +820,26 @@ test("Bus contract encodes and parses follower registration envelopes", () => {
   );
 });
 
+test("Bus pre-execution API refusal requires a negative acknowledgement and exact method evidence", () => {
+  const refusal = {
+    kind: "bus.ack" as const, requestId: "refused", ok: false,
+    error: { code: "follower-api-not-allowed" as const, method: "sendMessage" },
+  };
+  const parsed = parseTelegramBusEnvelope(encodeTelegramBusEnvelope(refusal));
+  assert.equal(parsed?.kind, "bus.ack");
+  if (parsed?.kind !== "bus.ack") throw new Error("Missing refusal acknowledgement");
+  assert.deepEqual(parsed.error, refusal.error);
+  for (const error of [
+    { code: "follower-api-not-allowed" },
+    { code: "follower-api-not-allowed", method: "" },
+    { code: "follower-api-not-allowed", method: "sendMessage trailing" },
+    { code: "follower-api-not-allowed", method: "s".repeat(65) },
+    { code: "follower-api-not-allowed", method: 1 },
+  ]) assert.equal(parseTelegramBusEnvelope(JSON.stringify({ ...refusal, error })), undefined);
+  for (const contradiction of [{ ok: true }, { result: true }, { result: null }])
+    assert.equal(parseTelegramBusEnvelope(JSON.stringify({ ...refusal, ...contradiction })), undefined);
+});
+
 test("Bus contract encodes and parses Workspace follower restore envelopes", () => {
   const envelope = {
     kind: "follower.restoreWorkspace" as const,

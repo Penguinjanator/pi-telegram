@@ -548,7 +548,7 @@ export type TelegramBusEnvelope = ({
     result?: unknown;
     protocol?: TelegramBusProtocolIdentity;
     error?: {
-        code: "commit-unknown" | "request-id-collision" | "ledger-overloaded" | "incompatible-protocol" | "stale-target" | "workspace-binding-unavailable";
+        code: "commit-unknown" | "request-id-collision" | "ledger-overloaded" | "incompatible-protocol" | "stale-target" | "follower-api-not-allowed" | "workspace-binding-unavailable";
         method?: string;
         chatId?: number;
         threadId?: number;

@@ -952,6 +952,8 @@ export function createTelegramBusFollowerApiCaller(deps) {
     const timeoutMs = deps.timeoutMs ?? TELEGRAM_BUS_FOLLOWER_CLIENT_TIMEOUT_MS;
     const slowCallMs = deps.slowCallMs ?? TELEGRAM_BUS_FOLLOWER_API_SLOW_CALL_MS;
     const caller = async (method, args, localOptions, timing) => {
+        const apiMethod = (method === "call" || method === "callMultipart") && typeof args[0] === "string"
+            ? args[0] : method;
         const assertion = localOptions?.assertAuthority;
         const assertCurrent = () => assertTelegramApiCallAuthority(assertion, false);
         assertCurrent();
@@ -975,10 +977,6 @@ export function createTelegramBusFollowerApiCaller(deps) {
         catch (error) {
             if (error instanceof TelegramBusLocalAuthorityError)
                 throw new TelegramApiAuthorityError(error.requestIssued);
-            const apiMethod = (method === "call" || method === "callMultipart") &&
-                typeof args[0] === "string"
-                ? args[0]
-                : method;
             if (!isTelegramApiMethodRetrySafe(apiMethod)) {
                 throw new TelegramApiCommitUnknownError(apiMethod, error);
             }
@@ -1002,15 +1000,19 @@ export function createTelegramBusFollowerApiCaller(deps) {
             response.error?.code === "commit-unknown") {
             throw new TelegramApiCommitUnknownError(response.error.method ?? method, new Error(message ?? "Telegram bus API call result is ambiguous."));
         }
-        if (message === TELEGRAM_BUS_FOLLOWER_API_NOT_ALLOWED_MESSAGE) {
+        const refusedMethod = response?.kind === "bus.ack" && !response.ok &&
+            response.error?.code === "follower-api-not-allowed" &&
+            response.error.method === apiMethod
+            ? apiMethod : undefined;
+        if (refusedMethod || message === TELEGRAM_BUS_FOLLOWER_API_NOT_ALLOWED_MESSAGE) {
             const body = (method === "call" || method === "callMultipart") && isRecord(args[1])
                 ? args[1]
                 : undefined;
             const chatId = Number(body?.chat_id);
             const threadId = Number(body?.message_thread_id);
-            throw new TelegramApiFollowerNotAllowedError(message, Number.isSafeInteger(chatId) && Number.isSafeInteger(threadId)
+            throw new TelegramApiFollowerNotAllowedError(message ?? TELEGRAM_BUS_FOLLOWER_API_NOT_ALLOWED_MESSAGE, Number.isSafeInteger(chatId) && Number.isSafeInteger(threadId)
                 ? { chatId, threadId }
-                : undefined);
+                : undefined, refusedMethod);
         }
         throw new Error(message ?? "Telegram bus API call failed.");
     };
