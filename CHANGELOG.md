@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- `CI diagnostics`: The passive child-process exit regression reports bounded lifecycle stage timings and active resource types, including import/startup progress and natural-exit events, with separate parent shutdown markers. Diagnostics add no referenced timer, expose no fixture credentials or paths, and leave existing assertions and deadlines unchanged.
+
 ## 0.57.8: Reply Recovery Safety
 
 - `Recipient safety`: A refused follower reply no longer immediately re-runs the whole command handler, which could repeat changes made before the failed send. The original input stays unchanged in durable retry state, without silent completion. Automatic reply relocation is withdrawn pending transport-level safety proof; a stale-Thread command may still retry and ordinary execution remains at-least-once.
