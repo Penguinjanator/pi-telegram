@@ -1400,15 +1400,6 @@ export default function (pi) {
                     return binding.hasAuthority?.() === true;
                 });
             },
-            recoverRejectedRecipientTarget(error) {
-                const rejected = error instanceof TelegramApi.TelegramApiFollowerNotAllowedError
-                    ? error.requestTarget
-                    : undefined;
-                const current = telegramBusFollowerRegistrationState.getTarget();
-                return rejected && current?.threadId !== undefined
-                    ? { rejected, current: { chatId: current.chatId, threadId: current.threadId } }
-                    : undefined;
-            },
             prepareUpdateForExecution(update) {
                 return BusFollower.prepareTelegramBusFollowerJournaledUpdateForExecution(update, textGroupRuntime.prepareForwardedMessage);
             },

@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- `Recipient safety`: A refused follower reply no longer immediately re-runs the whole command handler, which could repeat changes made before the failed send. The original input stays in durable retry state, unchanged and without silent completion. Automatic reply relocation is withheld pending transport-level safety proof; ordinary retries remain at-least-once.
+
 ## 0.57.7: Routing Cleanup and Recipient Recovery
 
 - `Recipient recovery`: A forwarded input journaled for a follower whose Thread was re-created no longer retries forever against the old Thread. After the leader refuses that reply, the input re-runs once against the follower's current Thread; a second refusal or any other failure keeps the durable retry state, and nothing is dropped.
