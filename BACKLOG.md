@@ -2,11 +2,9 @@
 
 _This file owns unresolved project work only. Completed behavior belongs in `CHANGELOG.md`; durable contracts belong in `AGENTS.md` and `/docs`._
 
-## Containment hotfix publication blocked
+## Request-identity hotfix publication
 
-The 0.57.8 candidate passed its three-platform pre-merge checks, was merged to main and tagged at `7f17c95167c8703444f904ced9e66ee58682b64d`, but the tag workflow failed its isolated macOS process-exit test and skipped publication. No matching GitHub Release or npm version exists; 0.57.7 remains latest. Preserve the tag and merged history. Handler-replay containment and structured refusal evidence are on main, not a completed release. Ordinary retries remain at-least-once and stale-Thread recovery remains unresolved.
-
-- [ ] Publish the guarded 0.57.9 candidate for the completed containment and CI correction, preserving the existing tag and merged history. The measured whole-job budget overrun has a validated sharding correction; the original passive-child timeout remains unexplained and deferred, not claimed fixed. Release notes must include the containment absent from the last public version and disclose the stale-Thread recovery limitation. Recheck registry/automation eligibility and require fresh release-candidate platform/shard checks before the owning tag workflow may publish. Do not retry the failed tag, retag, or publish manually.
+- [ ] Publish the 0.57.10 candidate containing completed follower request-identity hardening and bounded Windows fixture diagnostics through the guarded next-patch path. Recheck registry/version eligibility, require fresh release-candidate platform/shard checks, and let the owning tag workflow publish. Preserve existing tags and history. Reply-only recovery is still absent, and neither historical platform timeout is claimed fixed.
 
 ## Disposable Thread live acceptance
 
@@ -41,3 +39,8 @@ A target-scoped reply refusal cannot prove that a command made no prior effects.
 
 The 0.57.8 tag validation failed `Child process sharing the agent dir does not poll while parent owns Telegram lock` even when that file ran alone: `Child process did not exit. stdout= stderr=` at its existing child deadline. The other seven process tests and the identical pre-merge tree passed. That historical failure has no child-stage trace, so cold import, startup and a retained runtime handle remain competing explanations. Bounded diagnostic sampling is exhausted; passing traces showed imports up to 4.37 seconds against the five-second non-Windows child budget and natural exit within 8–14 ms after the event-loop checkpoint. These traces do not identify the original cause.
 - [ ] Retain bounded child-stage/resource diagnostics for the next genuinely failing passive-child trace; the original timeout is still unexplained. Do not spend more unchanged-head diagnostic samples. The parent records explicit shutdown separately; do not add a shutdown call to the passive child to make it pass. Correct a fixture/runtime cause only when the failing stage evidence supports it, and require fresh platform CI before resuming release recovery. Do not widen deadlines or describe the runner as the proven cause without measurement.
+
+## Windows Workspace-gate fixture timeout
+
+`Leader assembly serializes follower provisioning through its shared Workspace gate` once exceeded its generic one-second bus-response deadline. It sends `follower.register` directly, outside the changed API caller; production registration has a separate budget. The later native standalone witness acknowledged at about 90 ms, and the full suite passed, but the original failure has no gate/persistence trace. A synthetic delayed-write probe verifies diagnostic capture, not the native cause.
+- [ ] Use the next genuinely failing native trace to distinguish gate wait, persistence and acknowledgement delay before correcting this fixture or runtime. Retain its bounded stage evidence and standalone/full-suite execution; do not spend unchanged-head reruns or infer a cause from passing checks. Any deadline-policy correction must be justified against the registration owner's contract, not a guessed larger timeout.

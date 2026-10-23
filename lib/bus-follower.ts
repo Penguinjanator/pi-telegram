@@ -1919,13 +1919,16 @@ export function createTelegramBusFollowerApiCaller(
     method: string,
     args: unknown[],
     localOptions: Pick<TelegramApiCallOptions, "assertAuthority"> | undefined,
-    timing: { registeredAtMs?: number },
+    timing: { registeredAtMs?: number; apiMethod?: string },
   ): Promise<unknown> => {
-    const apiMethod = (method === "call" || method === "callMultipart") && typeof args[0] === "string"
-      ? args[0] : method;
     const assertion = localOptions?.assertAuthority;
     const assertCurrent = () => assertTelegramApiCallAuthority(assertion, false);
     assertCurrent();
+    // Match IPC's JSON semantics once, before awaits; send and refusal metadata share this identity.
+    const requestArgs = JSON.parse(JSON.stringify(args)) as unknown[];
+    const apiMethod = (method === "call" || method === "callMultipart") && typeof requestArgs[0] === "string"
+      ? requestArgs[0] : method;
+    timing.apiMethod = apiMethod;
     const registration = await resolveTelegramBusFollowerRegistration(
       deps,
       timeoutMs,
@@ -1945,7 +1948,7 @@ export function createTelegramBusFollowerApiCaller(
           instanceId: deps.instanceId,
           registrationGeneration: registration.generation,
           method,
-          args,
+          args: requestArgs,
           sentAtMs: getNowMs(),
         },
         assertion ? assertCurrent : undefined,
@@ -1991,8 +1994,8 @@ export function createTelegramBusFollowerApiCaller(
       ? apiMethod : undefined;
     if (refusedMethod || message === TELEGRAM_BUS_FOLLOWER_API_NOT_ALLOWED_MESSAGE) {
       const body =
-        (method === "call" || method === "callMultipart") && isRecord(args[1])
-          ? args[1]
+        (method === "call" || method === "callMultipart") && isRecord(requestArgs[1])
+          ? requestArgs[1]
           : undefined;
       const chatId = Number(body?.chat_id);
       const threadId = Number(body?.message_thread_id);
@@ -2008,7 +2011,7 @@ export function createTelegramBusFollowerApiCaller(
   };
   return async (method, args, localOptions) => {
     const startedAtMs = getNowMs();
-    const timing: { registeredAtMs?: number } = {};
+    const timing: { registeredAtMs?: number; apiMethod?: string } = {};
     let outcome = "ok";
     try {
       return await caller(method, args, localOptions, timing);
@@ -2018,11 +2021,7 @@ export function createTelegramBusFollowerApiCaller(
     } finally {
       const elapsedMs = getNowMs() - startedAtMs;
       if (elapsedMs >= slowCallMs) {
-        const apiMethod =
-          (method === "call" || method === "callMultipart") &&
-          typeof args[0] === "string"
-            ? args[0]
-            : method;
+        const apiMethod = timing.apiMethod ?? method;
         try {
           deps.recordRuntimeEvent?.(
             "bus",

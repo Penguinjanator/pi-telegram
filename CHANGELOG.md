@@ -4,6 +4,11 @@
 
 ## Unreleased
 
+## 0.57.10: Follower Request Identity
+
+- `Follower request identity`: Follower API arguments use one JSON-wire snapshot before registration waits. Later caller mutation no longer changes the issued method/body or relabels a refused target and slow-call method. Ordinary and multipart calls retain wire JSON semantics and authority fences; refusal evidence still grants no resend or whole-command replay.
+- `Windows CI diagnostics`: The Workspace-gate registration fixture records bounded gate and persistence stage timings, including them in failure context without paths or credentials. It also runs in the standalone Windows lifecycle probe before the full concurrent suite. Existing assertions, response deadline and job budgets are unchanged; instrumentation does not claim to solve the observed timeout.
+
 ## 0.57.9: Reply Safety and CI Recovery
 
 - `Recipient safety`: Ships the containment prepared for unpublished 0.57.8: a refused follower reply no longer immediately reruns its whole command handler and repeats earlier effects. The original input stays unchanged in durable retry state, without silent completion. Automatic reply relocation remains withdrawn; stale-Thread commands may still retry and ordinary execution remains at-least-once.
