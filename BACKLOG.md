@@ -2,11 +2,11 @@
 
 _This file owns unresolved project work only. Completed behavior belongs in `CHANGELOG.md`; durable contracts belong in `AGENTS.md` and `/docs`._
 
-## Next containment hotfix
+## Containment hotfix publication blocked
 
-Ship the handler-replay containment and structured refusal evidence without activating reply relocation or the larger orphan-tab routing change. The remaining recovery work stays separate; ordinary retries are still at-least-once and a stuck `/start` may remain retryable.
+The 0.57.8 candidate passed its three-platform pre-merge checks, was merged to main and tagged at `7f17c95167c8703444f904ced9e66ee58682b64d`, but the tag workflow failed its isolated macOS process-exit test and skipped publication. No matching GitHub Release or npm version exists; 0.57.7 remains latest. Preserve the tag and merged history. Handler-replay containment and structured refusal evidence are on main, not a completed release. Ordinary retries remain at-least-once and stale-Thread recovery remains unresolved.
 
-- [ ] Publish the prepared 0.57.8 candidate through the `dev` → `main` release route under the existing hotfix-series authorization. Require fresh platform CI, exact merged-tree/version verification, one immutable tag, and successful workflow-owned GitHub/npm publication. Do not claim unrun live acceptance or that the original stale-Thread recovery is solved.
+- [ ] Publish the guarded 0.57.9 candidate for the completed containment and CI correction, preserving the existing tag and merged history. The measured whole-job budget overrun has a validated sharding correction; the original passive-child timeout remains unexplained and deferred, not claimed fixed. Release notes must include the containment absent from the last public version and disclose the stale-Thread recovery limitation. Recheck registry/automation eligibility and require fresh release-candidate platform/shard checks before the owning tag workflow may publish. Do not retry the failed tag, retag, or publish manually.
 
 ## Disposable Thread live acceptance
 
@@ -39,6 +39,5 @@ A target-scoped reply refusal cannot prove that a command made no prior effects.
 
 ## macOS process-exit test flake
 
-The macOS job isolates `tests/process-shutdown.test.ts` and runs the remaining files one at a time (deadlines unchanged); three consecutive runs passed where four of five previous tag/main runs had failed. Alone, `pi -p … exits` still took 7–16 s of its 20 s budget on that runner, so the margin is thin and the cause is runner slowness, not a proven handle leak.
-
-- [ ] Keep watching the macOS job on the next releases. If an isolated child-process test still misses its deadline, capture child start-to-exit timing in CI before changing any budget; do not widen deadlines blindly.
+The 0.57.8 tag validation failed `Child process sharing the agent dir does not poll while parent owns Telegram lock` even when that file ran alone: `Child process did not exit. stdout= stderr=` at its existing child deadline. The other seven process tests and the identical pre-merge tree passed. That historical failure has no child-stage trace, so cold import, startup and a retained runtime handle remain competing explanations. Bounded diagnostic sampling is exhausted; passing traces showed imports up to 4.37 seconds against the five-second non-Windows child budget and natural exit within 8–14 ms after the event-loop checkpoint. These traces do not identify the original cause.
+- [ ] Retain bounded child-stage/resource diagnostics for the next genuinely failing passive-child trace; the original timeout is still unexplained. Do not spend more unchanged-head diagnostic samples. The parent records explicit shutdown separately; do not add a shutdown call to the passive child to make it pass. Correct a fixture/runtime cause only when the failing stage evidence supports it, and require fresh platform CI before resuming release recovery. Do not widen deadlines or describe the runner as the proven cause without measurement.

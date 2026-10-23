@@ -67,6 +67,34 @@ test("Unreleased changelog respects the project release-entry budget", () => {
   );
 });
 
+test("macOS CI shards cover every test file exactly once without widening deadlines", () => {
+  const runner = join(PROJECT_ROOT, "scripts", "run-macos-tests.mjs");
+  const inventory = readdirSync(join(PROJECT_ROOT, "tests"))
+    .filter((name) => name.endsWith(".test.ts")).map((name) => `tests/${name}`).sort();
+  const list = (shard: string, phase: string): string[] => JSON.parse(execFileSync(
+    process.execPath, [runner, shard, phase, "--list"], { encoding: "utf8" },
+  ));
+  const realProcess = "tests/process-shutdown.test.ts";
+  assert.deepEqual(list("0", "process"), [realProcess]);
+  assert.deepEqual(list("1", "process"), []);
+  const first = list("0", "remaining"), second = list("1", "remaining");
+  assert.ok(first.length > 0 && second.length > 0);
+  assert.ok(Math.abs(first.length - second.length) <= 1);
+  const all = [...list("0", "process"), ...first, ...second];
+  assert.equal(new Set(all).size, all.length, "Shards cannot overlap");
+  assert.deepEqual(all.sort(), inventory, "No test file can disappear from macOS CI");
+  assert.deepEqual(list("0", "remaining"), first, "Selection is deterministic");
+  assert.deepEqual(Array.from(validateWorkflowSource.matchAll(/- os: macos-26-intel\s+shard: (\d+)/g),
+    (match) => Number(match[1])), [0, 1]);
+  assert.match(validateWorkflowSource, /timeout-minutes: 30/);
+  assert.match(validateWorkflowSource, /matrix\.os == 'macos-26-intel' && matrix\.shard == 0/);
+  assert.match(validateWorkflowSource, /run: node scripts\/run-macos-tests\.mjs 0 process/);
+  assert.match(validateWorkflowSource, /run: node scripts\/run-macos-tests\.mjs \$\{\{ matrix\.shard \}\} remaining/);
+  assert.match(readFileSync(runner, "utf8"), /"--test-concurrency=1"/);
+  for (const args of [["2", "remaining"], ["0", "unknown"], ["0", "process", "extra"]])
+    assert.throws(() => execFileSync(process.execPath, [runner, ...args], { stdio: "pipe" }));
+});
+
 test("Release CI validates exact tags and publishes through npm Trusted Publisher", () => {
   assert.match(validateWorkflowSource, /^  workflow_call:$/m);
   assert.match(

@@ -12,14 +12,22 @@ permissions:
 
 jobs:
   validate:
+    name: validate (${{ matrix.os }}${{ matrix.shardName }})
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-latest
-          # Hosted arm64 capacity can leave macos-latest jobs unacquired.
-          - macos-26-intel
-          - windows-latest
+        include:
+          - os: ubuntu-latest
+            shardName: ""
+          - os: windows-latest
+            shardName: ""
+          # Keep files serial inside each Intel runner without exhausting one job's 30-minute budget.
+          - os: macos-26-intel
+            shard: 0
+            shardName: ", shard 1/2"
+          - os: macos-26-intel
+            shard: 1
+            shardName: ", shard 2/2"
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -54,21 +62,13 @@ jobs:
       - name: Run tests
         if: matrix.os != 'macos-26-intel'
         run: npm test
-      # Real child-process tests spawn the full extension and `pi`; on the small Intel runner they missed their exit deadlines
-      # while sharing it with other test files, so they run alone first. Every assertion and deadline stays unchanged.
+      # Real-process tests run alone, exactly once; the runner also keeps the local Pi CLI on PATH.
       - name: Run real-process tests alone
+        if: matrix.os == 'macos-26-intel' && matrix.shard == 0
+        run: node scripts/run-macos-tests.mjs 0 process
+      - name: Run remaining shard tests one file at a time
         if: matrix.os == 'macos-26-intel'
-        # npm scripts put the locally installed `pi` on PATH; direct node steps must too, or its tests silently skip.
-        run: >-
-          PATH="$PWD/node_modules/.bin:$PATH" node --experimental-strip-types --import ./tests/fixtures/canonical-tmpdir.ts
-          --test --test-concurrency=1 --test-reporter=spec tests/process-shutdown.test.ts
-      # Wall-clock latency and child-process tests are noisy on the small Intel runner; one test file at a time keeps every assertion and deadline unchanged.
-      - name: Run remaining tests one file at a time
-        if: matrix.os == 'macos-26-intel'
-        run: >-
-          PATH="$PWD/node_modules/.bin:$PATH" node --experimental-strip-types --import ./tests/fixtures/canonical-tmpdir.ts
-          --test --test-concurrency=1 --test-reporter=dot
-          $(ls tests/*.test.ts | grep -v '^tests/process-shutdown\.test\.ts$')
+        run: node scripts/run-macos-tests.mjs ${{ matrix.shard }} remaining
       - name: Check package contents
         run: npm run pack:check
       - name: Audit dependencies
