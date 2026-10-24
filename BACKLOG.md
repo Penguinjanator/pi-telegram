@@ -2,14 +2,10 @@
 
 _This file owns unresolved project work only. Completed behavior belongs in `CHANGELOG.md`; durable contracts belong in `AGENTS.md` and `/docs`._
 
-## 0.58.0 publication checkpoint
+## 0.58.1 publication checkpoint
 
-- [ ] Publish only the unified Connect internal-dispatch change through the protected dev-to-main release path. Require fresh Ubuntu, Windows and both macOS shard checks before merge, exact candidate/merged-tree equality, one immutable version tag and the repository-owned release workflow.
-- [ ] Verify the published GitHub Release and public npm latest version, tag/gitHead identity, canonical notes and packed runtime/skills before closing this checkpoint. Preserve unrelated recovery and live-acceptance gates; do not reload the running session or delete live Threads.
-
-## Per-Thread typing hotfix publication
-
-- [ ] After explicit publication authorization, ship the independent Thread chat-action fix separately from the frozen Connect-only minor candidate, with fresh complete platform checks and verified tag/GitHub/npm identity. Do not reload the running session; isolated transport tests do not prove live Telegram presence.
+- [ ] Publish the independent Thread chat-action fix through the protected dev-to-main path, requiring fresh Ubuntu, Windows and both macOS shard checks at the exact candidate head and candidate/merged-tree equality. Keep the immutable Connect-only minor unchanged and verify its publication before issuing the hotfix tag.
+- [ ] Verify the hotfix GitHub Release and public npm latest, exact tag/gitHead identity, canonical notes, packed runtime/skills and provenance before closing this checkpoint. No live session reload or Telegram probes; controlled transport tests do not prove live client presence.
 
 ## Disposable Thread live acceptance
 
@@ -44,8 +40,8 @@ A target-scoped reply refusal cannot prove that a command made no prior effects.
 
 ## macOS process-exit test flake
 
-The 0.57.8 tag validation failed `Child process sharing the agent dir does not poll while parent owns Telegram lock` even when that file ran alone: `Child process did not exit. stdout= stderr=` at its existing child deadline. The other seven process tests and the identical pre-merge tree passed. That historical failure has no child-stage trace, so cold import, startup and a retained runtime handle remain competing explanations. Bounded diagnostic sampling is exhausted; passing traces showed imports up to 4.37 seconds against the five-second non-Windows child budget and natural exit within 8–14 ms after the event-loop checkpoint. These traces do not identify the original cause.
-- [ ] Retain bounded child-stage/resource diagnostics for the next genuinely failing passive-child trace; the original timeout is still unexplained. Do not spend more unchanged-head diagnostic samples. The parent records explicit shutdown separately; do not add a shutdown call to the passive child to make it pass. Correct a fixture/runtime cause only when the failing stage evidence supports it, and require fresh platform CI before resuming release recovery. Do not widen deadlines or describe the runner as the proven cause without measurement.
+The 0.57.8 tag validation failed `Child process sharing the agent dir does not poll while parent owns Telegram lock` even when that file ran alone: `Child process did not exit. stdout= stderr=` at its existing child deadline. The other seven process tests and the identical pre-merge tree passed. That historical failure has no child-stage trace, so cold import, startup and a retained runtime handle remain competing explanations. Bounded diagnostic sampling is exhausted; passing traces showed imports up to 4.37 seconds against the five-second non-Windows child budget and natural exit within 8–14 ms after the event-loop checkpoint. These traces do not identify the original cause. A later main-validation recurrence stopped after `eval` and `import-start`, with parent-clock `elapsedMs=5009` and no import-complete checkpoint. That trace locates this recurrence before import completion, not in natural exit or a retained post-checkpoint handle; the slow dependency/startup cause remains unknown. The independent tag-owned Release validation passed the same committed tree, which does not erase the failed main check.
+- [ ] Use the recorded cold-import-stage failure to isolate dependency/startup cost before changing fixture phase budgets or runtime imports. Preserve the passive child's natural-exit assertion and separate parent shutdown; never add shutdown or force exit to make it pass. Do not spend more unchanged-head diagnostic samples. Any fixture/runtime correction needs failing-stage evidence and fresh complete platform checks; do not blindly widen deadlines or claim measured runner contention.
 
 ## Windows Workspace-gate fixture timeout
 
