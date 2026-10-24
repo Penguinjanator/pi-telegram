@@ -50,7 +50,7 @@ import * as Journal from "../lib/journal.ts";
 import * as Locks from "../lib/locks.ts";
 import * as Lifecycle from "../lib/lifecycle.ts";
 import * as Logging from "../lib/logging.ts";
-import type { ExtensionContext } from "../lib/pi.ts";
+import type { ExtensionAPI, ExtensionContext } from "../lib/pi.ts";
 import * as Ownership from "../lib/ownership.ts";
 import * as Queue from "../lib/queue.ts";
 import * as Polling from "../lib/polling.ts";
@@ -5545,15 +5545,17 @@ strictFileTest(`Telegram new gateway composes follower suspension, session regis
   });
   const oldSource = journals.createRecipientResolver(recipientKey, "session-a")()!;
   oldSource.journal.appendBatch([{ update_id: 1, message: { text: "old pending custody" } }]);
-  let invoke!: Parameters<Commands.TelegramSessionActionRuntimeDeps["registerCommand"]>[1]["handler"];
+  let invoke!: Parameters<ExtensionAPI["registerCommand"]>[1]["handler"];
   const action = Commands.createTelegramSessionActionRuntime({
-    registerCommand(_name, options) { invoke = options.handler; },
-    async sendUserMessage(text) {
+    async sendUserMessage(text, options) {
+      assert.deepEqual(options, { expandPromptTemplates: true });
       replacementStarted = true;
       try {
         assert.equal(typeof text, "string");
         if (typeof text !== "string") throw new Error("Expected the typed internal command");
-        await invoke(text.split(" ")[1]!, { ...ctx, async newSession() {
+        const prefix = `/${Commands.TELEGRAM_CONNECT_COMMAND_NAME} `;
+        assert.ok(text.startsWith(prefix));
+        await invoke(text.slice(prefix.length), { ...ctx, async newSession() {
           assert.equal(oldSource.journal.read().entries.some(entry => entry.updateId === 2), false, "Gateway follows exact source completion");
           await hooks.onSessionShutdown({ type: "session_shutdown", reason: "new" }, ctx);
           assert.equal(registrationState.isRegistered(), false);
@@ -5569,7 +5571,20 @@ strictFileTest(`Telegram new gateway composes follower suspension, session regis
     },
     notifyResult: async (_target, result) => { failures.push(result); }, recordRuntimeEvent: (_category, error) => { failures.push(error); },
   });
-  action.register();
+  Commands.registerTelegramBridgeCommands({
+    registerCommand(name, options) {
+      if (name === Commands.TELEGRAM_CONNECT_COMMAND_NAME) invoke = options.handler;
+      assert.notEqual(name, "telegram-internal");
+    },
+  } as ExtensionAPI, {
+    handleInternalAction: action.handleInternalAction,
+    promptForConfig: async () => assert.fail("Internal action cannot configure a profile"),
+    getStatusLines: () => [], reloadConfig: async () => assert.fail("No Connect reload"),
+    hasBotToken: () => assert.fail("No Connect token check"),
+    startPolling: () => assert.fail("No Connect startup"), stopPolling: async () => assert.fail("No disconnect"),
+    updateStatus: () => assert.fail("No Connect status update"),
+    getSessionGeneration: () => assert.fail("No Connect intent/session sampling"),
+  });
   let currentWorker: Updates.TelegramUpdateWorkerRuntime<ExtensionContext> | undefined;
   const workers = Updates.createTelegramUpdateAdmissionLifecycleRuntime<ExtensionContext>({
     resolveBinding: journals.resolveFollower,

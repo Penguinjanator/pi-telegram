@@ -2,10 +2,10 @@
 
 _This file owns unresolved project work only. Completed behavior belongs in `CHANGELOG.md`; durable contracts belong in `AGENTS.md` and `/docs`._
 
-## 0.57.11 publication checkpoint
+## 0.58.0 publication checkpoint
 
-- [ ] Validate and publish only the pre-publication follower reply-target fix through the protected dev-to-main release path. Require fresh Ubuntu, Windows and both macOS shard checks before merge, exact candidate/merged-tree equality, one immutable version tag and the repository-owned release workflow.
-- [ ] Confirm the published GitHub Release and public npm version, tag/gitHead identity, release notes and packed runtime/skills before closing this checkpoint. Keep post-refusal recovery and disposable-tab live acceptance open; do not reload the running session.
+- [ ] Publish only the unified Connect internal-dispatch change through the protected dev-to-main release path. Require fresh Ubuntu, Windows and both macOS shard checks before merge, exact candidate/merged-tree equality, one immutable version tag and the repository-owned release workflow.
+- [ ] Verify the published GitHub Release and public npm latest version, tag/gitHead identity, canonical notes and packed runtime/skills before closing this checkpoint. Preserve unrelated recovery and live-acceptance gates; do not reload the running session or delete live Threads.
 
 ## Disposable Thread live acceptance
 

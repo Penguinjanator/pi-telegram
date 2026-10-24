@@ -92,7 +92,6 @@ export default function (pi: Pi.ExtensionAPI) {
     getCommands,
     getThinkingLevel,
     sendUserMessage,
-    registerCommand,
     setActiveTools,
     setModel,
     setThinkingLevel,
@@ -310,7 +309,6 @@ export default function (pi: Pi.ExtensionAPI) {
     captureAuthority: captureTelegramStateAuthority,
   });
   const sessionActionAssembly = Commands.createTelegramSessionActionAssembly({
-    registerCommand,
     sendUserMessage,
     store: threadStore,
     getProfileName: configStore.getActiveProfileName,
@@ -2833,9 +2831,9 @@ export default function (pi: Pi.ExtensionAPI) {
       },
     }.reset,
   );
-  sessionActionsRuntime.register();
   Bindings.registerTelegramCommandsAndTools({
     pi,
+    handleInternalAction: sessionActionsRuntime.handleInternalAction,
     agentDir: Paths.resolveAgentDir(),
     configStore,
     persistConfig: persistTelegramConfigWithSync,

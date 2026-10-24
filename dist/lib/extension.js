@@ -80,7 +80,7 @@ const telegramBusProtocolIdentity = Bus.createTelegramCurrentBusProtocolIdentity
 export default function (pi) {
     Skills.registerTelegramSkillDiscovery(pi);
     const piRuntime = Pi.createExtensionApiRuntimePorts(pi);
-    const { getActiveTools, getCommands, getThinkingLevel, sendUserMessage, registerCommand, setActiveTools, setModel, setThinkingLevel, } = piRuntime;
+    const { getActiveTools, getCommands, getThinkingLevel, sendUserMessage, setActiveTools, setModel, setThinkingLevel, } = piRuntime;
     const bridgeRuntime = Runtime.createTelegramBridgeRuntime();
     const runtimeDiagnostics = Logging.createTelegramRuntimeDiagnosticsRuntime({
         sharedFile: true,
@@ -242,7 +242,6 @@ export default function (pi) {
         captureAuthority: captureTelegramStateAuthority,
     });
     const sessionActionAssembly = Commands.createTelegramSessionActionAssembly({
-        registerCommand,
         sendUserMessage,
         store: threadStore,
         getProfileName: configStore.getActiveProfileName,
@@ -2293,9 +2292,9 @@ export default function (pi) {
             }
         },
     }.reset);
-    sessionActionsRuntime.register();
     Bindings.registerTelegramCommandsAndTools({
         pi,
+        handleInternalAction: sessionActionsRuntime.handleInternalAction,
         agentDir: Paths.resolveAgentDir(),
         configStore,
         persistConfig: persistTelegramConfigWithSync,

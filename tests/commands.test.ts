@@ -36,8 +36,8 @@ import {
   createTelegramSessionActionAssembly,
   createTelegramSessionActionRuntime,
   settleTelegramSessionReplacement,
-  TELEGRAM_INTERNAL_COMMAND_DESCRIPTION,
-  TELEGRAM_INTERNAL_COMMAND_NAME,
+  TELEGRAM_CONNECT_COMMAND_NAME,
+  TELEGRAM_INTERNAL_COMMAND_FLAG,
   TELEGRAM_INTERNAL_MANUAL_USE_MESSAGE,
   type TelegramSessionActionRuntimeDeps,
   executeTelegramCommandAction,
@@ -389,10 +389,6 @@ test("Command helpers expose Telegram bot command definitions", () => {
     },
   ];
   assert.deepEqual(TELEGRAM_BOT_COMMANDS, expectedBuiltins);
-  assert.equal(
-    TELEGRAM_INTERNAL_COMMAND_DESCRIPTION,
-    "Internal Telegram command cannot be run manually",
-  );
 });
 
 test("Command helpers register Telegram bot commands through deps", async () => {
@@ -733,6 +729,44 @@ for (const boundary of ["before", "await", "copy"] as const) for (const loss of 
       assert.equal(f.handlerCalls(), 0);
     } finally { dispose(); replacement?.(); clearTelegramExtensionCommands(); }
   });
+
+for (const args of ["--internal", "--internal new", "--internal new forged", "--internal future forged", "--internal=new forged", "work --internal new forged", "--INTERNAL new forged", "--internalize new forged", "--internal new forged extra"]) {
+  test(`Connect refuses unavailable or malformed internal dispatch without connection effects (${args})`, async () => {
+    const harness = createCommandRegistrationApiHarness();
+    const effects: string[] = [], notices: string[] = [];
+    registerTelegramBridgeCommands(harness.api, {
+      promptForConfig: async () => { effects.push("setup"); },
+      getStatusLines: () => [],
+      reloadConfig: async () => { effects.push("reload"); },
+      hasBotToken: () => { effects.push("token"); return true; },
+      startPolling: async () => { effects.push("start"); },
+      stopPolling: async () => { effects.push("stop"); },
+      updateStatus: () => { effects.push("status"); },
+      getSessionGeneration: () => { effects.push("generation"); return 1; },
+      activateProfileConfig: async () => { effects.push("profile"); return true; },
+    });
+    await getRequiredCommand(harness.commands, "telegram-connect").handler(args, createBridgeCommandContext(message => notices.push(message)));
+    assert.deepEqual(effects, []);
+    assert.deepEqual(notices, [TELEGRAM_INTERNAL_MANUAL_USE_MESSAGE]);
+  });
+}
+
+test("Connect keeps internal as an ordinary profile name", async () => {
+  const harness = createCommandRegistrationApiHarness();
+  const profiles: string[] = [];
+  let starts = 0;
+  registerTelegramBridgeCommands(harness.api, {
+    promptForConfig: async () => assert.fail("Existing named profile must not enter setup"),
+    getStatusLines: () => [], reloadConfig: async () => assert.fail("Do not activate default profile"),
+    hasBotToken: () => true,
+    startPolling: async () => { starts++; }, stopPolling: async () => {}, updateStatus() {},
+    activateProfileConfig: async (_ctx, profile) => { profiles.push(profile); return true; },
+  });
+  for (const profile of ["internal", "new"])
+    await getRequiredCommand(harness.commands, "telegram-connect").handler(profile, createBridgeCommandContext());
+  assert.deepEqual(profiles, ["internal", "new"]);
+  assert.equal(starts, 2);
+});
 
 test("Connect reports an unresolved token reference before prompting setup", async () => {
   const harness = createCommandRegistrationApiHarness();
@@ -5363,22 +5397,15 @@ test("New session command gates on busy state and schedules without a false resu
   assert.equal(started.requests, 1);
   assert.deepEqual(started.runtimeEvents, []);
 });
-type RegisteredCommand = {
-  description?: string;
-  handler: (args: string, ctx: ExtensionCommandContext) => Promise<void>;
-};
-
 function createRuntimeHarness() {
-  const commands = new Map<string, RegisteredCommand>();
+  const bridge = createCommandRegistrationApiHarness();
   const dispatched: string[] = [];
   const failures: unknown[] = [];
   const results: string[] = [];
   const prepared: number[] = [];
   const api = {
-    registerCommand: (name: string, definition: RegisteredCommand) => {
-      commands.set(name, definition);
-    },
-    sendUserMessage: async (content: string) => {
+    sendUserMessage: async (content: string, options: Parameters<TelegramSessionActionRuntimeDeps["sendUserMessage"]>[1]) => {
+      assert.deepEqual(options, { expandPromptTemplates: true });
       dispatched.push(content);
     },
     notifyResult: async (_target: unknown, result: string) => {
@@ -5392,8 +5419,16 @@ function createRuntimeHarness() {
     },
   } as unknown as TelegramSessionActionRuntimeDeps;
   const runtime = createTelegramSessionActionRuntime(api);
-  runtime.register();
-  return { commands, dispatched, failures, prepared, results, runtime };
+  const unexpected = () => assert.fail("Internal dispatch cannot enter ordinary Connect");
+  registerTelegramBridgeCommands(bridge.api, {
+    handleInternalAction: runtime.handleInternalAction,
+    promptForConfig: async () => unexpected(), getStatusLines: unexpected,
+    reloadConfig: async () => unexpected(), hasBotToken: unexpected,
+    startPolling: unexpected, stopPolling: async () => unexpected(), updateStatus: unexpected,
+    getSessionGeneration: unexpected, isContextCurrent: unexpected,
+  });
+  assert.equal(bridge.commands.has("telegram-internal"), false);
+  return { commands: bridge.commands, dispatched, failures, prepared, results, runtime };
 }
 
 function createCommandContext(
@@ -5409,7 +5444,7 @@ function createCommandContext(
 const target = { chatId: 7, threadId: 8, messageId: 9 };
 
 function getInternalCommandToken(content: string): string {
-  const prefix = `/${TELEGRAM_INTERNAL_COMMAND_NAME} `;
+  const prefix = `/${TELEGRAM_CONNECT_COMMAND_NAME} ${TELEGRAM_INTERNAL_COMMAND_FLAG} new `;
   assert.ok(content.startsWith(prefix));
   const token = content.slice(prefix.length);
   assert.match(token, /^[0-9a-f-]{36}$/);
@@ -5461,12 +5496,10 @@ test("Successor settlement rejects mismatches, expiry, and lost cleanup acknowle
 });
 
 test("Classic session action publishes chat continuity without a Workspace binding", async () => {
-  const commands = new Map<string, RegisteredCommand>();
   const dispatched: string[] = [];
   const intents: unknown[] = [];
   let workspaceLookups = 0;
   const assembly = createTelegramSessionActionAssembly({
-    registerCommand: (name, definition) => { commands.set(name, definition as RegisteredCommand); },
     sendUserMessage: async (content) => {
       assert.equal(typeof content, "string");
       dispatched.push(content as string);
@@ -5484,12 +5517,11 @@ test("Classic session action publishes chat continuity without a Workspace bindi
     handoffTtlMs: 30_000,
     now: () => 1000,
   });
-  assembly.action.register();
   assert.equal(assembly.action.scheduleAfterUpdate(41, { chatId: 7, messageId: 9 }), true);
   assembly.action.onUpdateCompleted(41);
   await Promise.resolve();
-  await commands.get(TELEGRAM_INTERNAL_COMMAND_NAME)!.handler(
-    getInternalCommandToken(dispatched[0]!), {
+  await assembly.action.handleInternalAction(
+    `new ${getInternalCommandToken(dispatched[0]!)}`, {
     cwd: "/repo",
     sessionManager: { getSessionId: () => "session-old" },
     newSession: async () => ({ cancelled: false }),
@@ -5508,7 +5540,6 @@ test("Follower Thread session action publishes and settles through leader-mediat
     registered?: boolean;
     publish?: (intent: TelegramSessionReplacementIntent) => Promise<boolean>;
   } = {}) => {
-    const commands = new Map<string, RegisteredCommand>();
     const dispatched: string[] = [];
     const requests: Array<{ operation: string; intent: TelegramSessionReplacementIntent }> = [];
     const localCommits: TelegramSessionReplacementIntent[] = [];
@@ -5517,7 +5548,6 @@ test("Follower Thread session action publishes and settles through leader-mediat
     const state = { registered: options.registered ?? true, refreshes: 0, rekeyed: false,
       intent: undefined as TelegramSessionReplacementIntent | undefined };
     const assembly = createTelegramSessionActionAssembly({
-      registerCommand: (name, definition) => { commands.set(name, definition as RegisteredCommand); },
       sendUserMessage: async (content) => { dispatched.push(content as string); },
       store: {
         load: async () => {},
@@ -5552,14 +5582,13 @@ test("Follower Thread session action publishes and settles through leader-mediat
       handoffTtlMs: 30_000,
       now: () => 1000,
     });
-    assembly.action.register();
     const run = async () => {
       assert.equal(assembly.action.scheduleAfterUpdate(41, { ...threadTarget, messageId: 9 }), true);
       assembly.action.onUpdateCompleted(41);
       await new Promise<void>((resolve) => setImmediate(resolve));
       let newSessions = 0;
-      await commands.get(TELEGRAM_INTERNAL_COMMAND_NAME)!.handler(
-        getInternalCommandToken(dispatched.at(-1)!), {
+      await assembly.action.handleInternalAction(
+        `new ${getInternalCommandToken(dispatched.at(-1)!)}`, {
         cwd: "/repo",
         sessionManager: { getSessionId: () => "session-old" },
         newSession: async () => { newSessions += 1; return { cancelled: false }; },
@@ -5633,10 +5662,8 @@ test("Classic successor settles once across same-process and process-replacement
     const path = join(dir, "targets.json");
     try {
       const sourceStore = createTelegramTopicTargetStore({ path, getNowMs: () => 1000 });
-      const commands = new Map<string, RegisteredCommand>();
       const dispatched: string[] = [];
       const source = createTelegramSessionActionAssembly({
-        registerCommand: (name, definition) => { commands.set(name, definition as RegisteredCommand); },
         sendUserMessage: async (content) => {
           assert.equal(typeof content, "string");
           dispatched.push(content as string);
@@ -5645,12 +5672,11 @@ test("Classic successor settles once across same-process and process-replacement
         sendResult: async () => { throw new Error("source must not publish success"); },
         handoffTtlMs: 30_000, now: () => 1000,
       });
-      source.action.register();
       source.action.scheduleAfterUpdate(41, { chatId: 7, messageId: 9 });
       source.action.onUpdateCompleted(41);
       await new Promise<void>((resolve) => setImmediate(resolve));
-      await commands.get(TELEGRAM_INTERNAL_COMMAND_NAME)!.handler(
-        getInternalCommandToken(dispatched[0]!), {
+      await source.action.handleInternalAction(
+        `new ${getInternalCommandToken(dispatched[0]!)}`, {
         cwd: "/repo", sessionManager: { getSessionId: () => "session-old" },
         newSession: async () => ({ cancelled: false }),
       } as unknown as ExtensionCommandContext);
@@ -5714,16 +5740,23 @@ test("Session action requires its one-use dispatch token and leaves success to s
   await Promise.resolve();
   assert.equal(harness.runtime.hasPending(), true);
   let calls = 0;
-  const command = harness.commands.get(TELEGRAM_INTERNAL_COMMAND_NAME);
-  assert.ok(command);
+  const command = getRequiredCommand(harness.commands, TELEGRAM_CONNECT_COMMAND_NAME);
   const notices: string[] = [];
-  await command.handler("manual", createCommandContext(async () => {
-    calls += 1;
-    return { cancelled: false };
-  }, notices));
-  assert.equal(harness.runtime.hasPending(), true);
+  const token = getInternalCommandToken(harness.dispatched[0]!);
+  const invalid = ["--internal", "--internal new", "--internal new manual",
+    `--internal future ${token}`, `--internal new ${token} extra`,
+    `work --internal new ${token}`, `--internal=new ${token}`,
+    `--INTERNAL new ${token}`, `--internalize new ${token}`];
+  for (const args of invalid) {
+    await command.handler(args, createCommandContext(async () => {
+      calls += 1;
+      return { cancelled: false };
+    }, notices));
+    assert.equal(harness.runtime.hasPending(), true, args);
+    assert.equal(calls, 0, args);
+  }
   await command.handler(
-    getInternalCommandToken(harness.dispatched[0]!),
+    `${TELEGRAM_INTERNAL_COMMAND_FLAG} new ${getInternalCommandToken(harness.dispatched[0]!)}`,
     createCommandContext(async (options) => {
       calls += 1;
       assert.equal(options, undefined);
@@ -5731,58 +5764,46 @@ test("Session action requires its one-use dispatch token and leaves success to s
     }),
   );
   await command.handler(
-    getInternalCommandToken(harness.dispatched[0]!),
+    `${TELEGRAM_INTERNAL_COMMAND_FLAG} new ${getInternalCommandToken(harness.dispatched[0]!)}`,
     createCommandContext(async () => {
       calls += 1;
       return { cancelled: false };
     }, notices),
   );
   assert.equal(calls, 1);
-  assert.deepEqual(notices, [
-    TELEGRAM_INTERNAL_MANUAL_USE_MESSAGE,
-    TELEGRAM_INTERNAL_MANUAL_USE_MESSAGE,
-  ]);
+  assert.deepEqual(notices, Array(invalid.length + 1).fill(TELEGRAM_INTERNAL_MANUAL_USE_MESSAGE));
   assert.deepEqual(harness.prepared, [7]);
   assert.deepEqual(harness.results, []);
   assert.equal(harness.runtime.hasPending(), false);
 });
 
 test("Session action does not replace before durable preparation succeeds", async () => {
-  const harness = createRuntimeHarness();
-  harness.runtime.scheduleAfterUpdate(8, target);
-  harness.runtime.onUpdateCompleted(8);
-  await Promise.resolve();
   let replacements = 0;
-  const command = harness.commands.get(TELEGRAM_INTERNAL_COMMAND_NAME)!;
-  const original = (harness as unknown as { prepared: number[] }).prepared;
-  original.splice(0);
-  // The injected preparation failure is represented through a dedicated runtime.
-  const failingDispatch: string[] = [];
+  const failingDispatch: string[] = [], results: string[] = [];
+  const failures: unknown[] = [];
   const failing = createTelegramSessionActionRuntime({
-    registerCommand: (_name, definition) => harness.commands.set("failing", definition as RegisteredCommand),
     sendUserMessage: async (content) => {
       assert.equal(typeof content, "string");
       failingDispatch.push(content as string);
     },
     prepareReplacement: async () => { throw new Error("persist failed"); },
-    notifyResult: async (_target, result) => { harness.results.push(result); },
-    recordRuntimeEvent: (_category, error) => { harness.failures.push(error); },
+    notifyResult: async (_target, result) => { results.push(result); },
+    recordRuntimeEvent: (_category, error) => { failures.push(error); },
   } as TelegramSessionActionRuntimeDeps);
-  failing.register();
   failing.scheduleAfterUpdate(18, target);
   failing.onUpdateCompleted(18);
   await Promise.resolve();
-  await harness.commands.get("failing")!.handler(
-    getInternalCommandToken(failingDispatch[0]!),
+  await failing.handleInternalAction(
+    `new ${getInternalCommandToken(failingDispatch[0]!)}`,
     createCommandContext(async () => {
       replacements += 1;
       return { cancelled: false };
     }),
   );
   assert.equal(replacements, 0);
-  assert.equal(harness.results.at(-1), "failure");
-  assert.match(String(harness.failures.at(-1)), /persist failed/);
-  assert.ok(command);
+  assert.deepEqual(results, ["failure"]);
+  assert.equal(failures.length, 1);
+  assert.match(String(failures[0]), /persist failed/);
 });
 
 test("Session action contains failures and emits a terminal failure result", async () => {
@@ -5790,9 +5811,9 @@ test("Session action contains failures and emits a terminal failure result", asy
   harness.runtime.scheduleAfterUpdate(9, target);
   harness.runtime.onUpdateCompleted(9);
   await Promise.resolve();
-  const command = harness.commands.get(TELEGRAM_INTERNAL_COMMAND_NAME);
-  await command!.handler(
-    getInternalCommandToken(harness.dispatched[0]!),
+  const command = getRequiredCommand(harness.commands, TELEGRAM_CONNECT_COMMAND_NAME);
+  await command.handler(
+    `${TELEGRAM_INTERNAL_COMMAND_FLAG} new ${getInternalCommandToken(harness.dispatched[0]!)}`,
     createCommandContext(async () => {
       throw new Error("replacement failed");
     }),

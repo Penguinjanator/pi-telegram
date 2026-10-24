@@ -869,6 +869,8 @@ export function createTelegramLiveTargetWorkObserver<TContext>(deps: {
 
 interface TelegramCommandsAndToolsBindingDeps {
   pi: Pi.ExtensionAPI;
+  handleInternalAction:
+    Commands.TelegramSessionActionRuntime["handleInternalAction"];
   agentDir: string;
   configStore: Config.TelegramConfigStore;
   persistConfig: (config?: Config.TelegramConfig) => Promise<void>;
@@ -926,6 +928,7 @@ interface TelegramCommandsAndToolsBindingDeps {
 
 export function registerTelegramCommandsAndTools({
   pi,
+  handleInternalAction,
   agentDir,
   configStore,
   persistConfig,
@@ -1023,6 +1026,7 @@ export function registerTelegramCommandsAndTools({
     );
   };
   Commands.registerTelegramBridgeCommands(pi, {
+    handleInternalAction,
     promptForConfig: async (ctx, profileName) => {
       const nextProfileName = profileName ?? undefined;
       if (profileName && !Config.isValidTelegramProfileName(profileName)) {

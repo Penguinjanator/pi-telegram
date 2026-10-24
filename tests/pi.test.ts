@@ -131,7 +131,7 @@ test("Pi API runtime ports bind methods without losing receiver context", async 
   assert.deepEqual(runtime.getActiveTools(), ["read"]);
   runtime.setActiveTools(["read", "telegram_attach"]);
   assert.equal(await runtime.setModel(createHarnessModel("gpt-5")), true);
-  runtime.registerCommand("telegram-internal", {
+  runtime.registerCommand("telegram-connect", {
     description: "internal",
     handler: async () => {},
   });
@@ -144,7 +144,7 @@ test("Pi API runtime ports bind methods without losing receiver context", async 
     "get-tools",
     "set-tools:read,telegram_attach",
     "model:gpt-5",
-    "command:telegram-internal",
+    "command:telegram-connect",
   ]);
 });
 
