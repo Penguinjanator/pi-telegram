@@ -36,6 +36,7 @@ import {
   TelegramApiAuthorityError,
   type TelegramApiCallOptions,
 } from "./telegram-api.ts";
+import type { TelegramTarget } from "./target.ts";
 import type { TelegramSessionReplacementIntent } from "./threads.ts";
 import {
   acquireTelegramUpdateRouting,
@@ -1194,34 +1195,38 @@ export interface TelegramCommandTargetRuntimeDeps<TContext> {
   ) => void;
   getAdmissionScope?: () => string | undefined;
   getAdmissionJournalBinding?: () => string | undefined;
+  /** Ordinary reply destination selected before publication, not resend authority. */
+  getReplyTarget?: (
+    message: TelegramCommandRuntimeMessage,
+  ) => TelegramTarget | undefined;
   onControlQueued?: (
     message: TelegramCommandRuntimeMessage,
     receipt: TelegramQueueAdmissionReceipt,
   ) => void;
   showStatus: (
     chatId: number,
-    replyToMessageId: number,
+    replyToMessageId: number | undefined,
     ctx: TContext,
     threadId?: number,
     options?: Pick<TelegramApiCallOptions, "assertAuthority">,
   ) => Promise<void>;
   openModelMenu: (
     chatId: number,
-    replyToMessageId: number,
+    replyToMessageId: number | undefined,
     ctx: TContext,
     threadId?: number,
     options?: Pick<TelegramApiCallOptions, "assertAuthority">,
   ) => Promise<void>;
   openSettingsMenu?: (
     chatId: number,
-    replyToMessageId: number,
+    replyToMessageId: number | undefined,
     ctx: TContext,
     threadId?: number,
     options?: Pick<TelegramApiCallOptions, "assertAuthority">,
   ) => Promise<void>;
   sendTextReply: (
     chatId: number,
-    replyToMessageId: number,
+    replyToMessageId: number | undefined,
     text: string,
     options?: {
       parseMode?: "HTML";
@@ -1336,6 +1341,7 @@ export function createTelegramCommandTargetQueueRuntime<
       createControlItem,
       enqueueControlItem: controlQueueController.enqueue,
     }),
+    getReplyTarget: deps.getReplyTarget,
     getAdmissionScope: deps.getAdmissionScope,
     getAdmissionJournalBinding: deps.getAdmissionJournalBinding,
     onControlQueued: deps.onControlQueued,
@@ -1352,6 +1358,25 @@ export function createTelegramCommandTargetRuntime<
 >(
   deps: TelegramCommandTargetRuntimeDeps<TContext>,
 ): TelegramCommandTargetRuntime<TMessage, TContext> {
+  const getReplyTarget = (
+    message: TMessage,
+    options?: Pick<TelegramApiCallOptions, "assertAuthority">,
+  ) => {
+    const source = getTelegramCommandMessageTarget(message);
+    const recipient = options?.assertAuthority
+      ? undefined
+      : deps.getReplyTarget?.(message);
+    if (!recipient) return source;
+    if (recipient.chatId !== source.chatId)
+      throw new Error("Telegram command reply cannot change its recipient chat.");
+    if (source.threadId !== undefined && recipient.threadId === undefined)
+      throw new Error("Telegram command cannot move a Thread reply to All.");
+    return {
+      ...recipient,
+      replyToMessageId:
+        recipient.threadId === source.threadId ? source.replyToMessageId : undefined,
+    };
+  };
   return {
     enqueueControlItem: (message, ctx, controlType, statusSummary, execute) => {
       const sourceUpdateId = message.pi_telegram_source_update_id;
@@ -1381,7 +1406,7 @@ export function createTelegramCommandTargetRuntime<
       );
     },
     showStatus: (message, ctx, options) => {
-      const target = getTelegramCommandMessageTarget(message);
+      const target = getReplyTarget(message, options);
       return deps.showStatus(
         target.chatId,
         target.replyToMessageId,
@@ -1391,7 +1416,7 @@ export function createTelegramCommandTargetRuntime<
       );
     },
     openModelMenu: (message, ctx, options) => {
-      const target = getTelegramCommandMessageTarget(message);
+      const target = getReplyTarget(message, options);
       return deps.openModelMenu(
         target.chatId,
         target.replyToMessageId,
@@ -1401,7 +1426,7 @@ export function createTelegramCommandTargetRuntime<
       );
     },
     openSettingsMenu: async (message, ctx, options) => {
-      const target = getTelegramCommandMessageTarget(message);
+      const target = getReplyTarget(message, options);
       if (!deps.openSettingsMenu) {
         await deps.sendTextReply(
           target.chatId,
@@ -1423,7 +1448,7 @@ export function createTelegramCommandTargetRuntime<
       );
     },
     sendTextReply: async (message, text, options) => {
-      const target = getTelegramCommandMessageTarget(message);
+      const target = getReplyTarget(message, options);
       const assertAuthority = options?.assertAuthority,
         send = deps.sendTextReply;
       const capturedOptions = { ...options, target };
@@ -2217,6 +2242,7 @@ export function createTelegramCommandHandlerTargetRuntime<
     }),
     appendControlItem: deps.appendControlItem,
     dispatchNextQueuedTelegramTurn: deps.dispatchNextQueuedTelegramTurn,
+    getReplyTarget: deps.getReplyTarget,
     getAdmissionScope: deps.getAdmissionScope,
     getAdmissionJournalBinding: deps.getAdmissionJournalBinding,
     onControlQueued: deps.onControlQueued,

@@ -3694,6 +3694,45 @@ for (const mode of ["current", "idle", "telegram-active", "source-before", "reci
   });
 }
 
+test("Command reply projection preserves source, anchors and explicit delivery authority", async () => {
+  for (const mode of ["source", "current", "replacement", "selected", "foreign-chat", "all", "revoked"] as const) {
+    const message = Object.freeze({ chat: Object.freeze({ id: 7 }), message_id: 11, message_thread_id: 41 });
+    const calls: unknown[][] = [];
+    let resolutions = 0;
+    const options = mode === "selected" ? { assertAuthority() {} } : undefined;
+    const runtime = createTelegramCommandTargetRuntime<typeof message, string>({
+      enqueueControlItem() { assert.fail("Reply projection cannot change command admission"); },
+      getReplyTarget() {
+        resolutions++;
+        if (mode === "revoked") throw new Error("Recipient unavailable");
+        if (mode === "source") return undefined;
+        return { chatId: mode === "foreign-chat" ? 8 : 7,
+          threadId: mode === "all" ? undefined : mode === "current" ? 41 : 44 };
+      },
+      async showStatus(chat, anchor, _ctx, thread) { calls.push(["status", chat, anchor, thread]); },
+      async openModelMenu(chat, anchor, _ctx, thread) { calls.push(["model", chat, anchor, thread]); },
+      async openSettingsMenu(chat, anchor, _ctx, thread) { calls.push(["settings", chat, anchor, thread]); },
+      async sendTextReply(chat, anchor, _text, captured) { calls.push(["text", chat, anchor, captured?.target?.threadId]); },
+    });
+    const actions = [
+      () => runtime.showStatus(message, "ctx", options),
+      () => runtime.openModelMenu(message, "ctx", options),
+      () => runtime.openSettingsMenu(message, "ctx", options),
+      () => runtime.sendTextReply(message, "notice", options),
+    ];
+    if (["foreign-chat", "all", "revoked"].includes(mode)) {
+      for (const action of actions) await assert.rejects(async () => action(), /recipient chat|Thread reply to All|Recipient unavailable/);
+      assert.deepEqual(calls, [], mode);
+    } else {
+      for (const action of actions) await action();
+      const moved = mode === "replacement";
+      assert.deepEqual(calls, ["status", "model", "settings", "text"].map(kind => [kind, 7, moved ? undefined : 11, moved ? 44 : 41]), mode);
+    }
+    assert.equal(resolutions, mode === "selected" ? 0 : 4, mode);
+    assert.deepEqual(message, { chat: { id: 7 }, message_id: 11, message_thread_id: 41 }, mode);
+  }
+});
+
 for (const mode of ["entry-mutation", "await-mutation"] as const) {
   test(`Command text target adapter captures recipient callback/options across ${mode}`, async () => {
     const held = Promise.withResolvers<void>(), message = { chat: { id: 7 }, message_id: 11, message_thread_id: 41 };
@@ -3706,7 +3745,7 @@ for (const mode of ["entry-mutation", "await-mutation"] as const) {
     };
     options.assertAuthority = assertAuthority;
     const deps = { enqueueControlItem() { assert.fail("No admission"); }, showStatus: async () => {}, openModelMenu: async () => {},
-      async sendTextReply(chatId: number, anchor: number, _text: string, captured?: Parameters<TelegramCommandHandlerTargetRuntimeDeps<typeof message, string>["sendTextReply"]>[3]) {
+      async sendTextReply(chatId: number, anchor: number | undefined, _text: string, captured?: Parameters<TelegramCommandHandlerTargetRuntimeDeps<typeof message, string>["sendTextReply"]>[3]) {
         assert.deepEqual([chatId, anchor, captured?.target?.threadId, captured?.parseMode], [7, 11, 41, "HTML"]);
         assert.equal(captured?.assertAuthority, assertAuthority); sends++; await held.promise;
       } };

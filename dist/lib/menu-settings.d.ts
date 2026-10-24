@@ -52,7 +52,7 @@ export interface TelegramSettingsMenuCallbackDeps extends TelegramSettingsMutati
     sectionRegistry?: TelegramSectionRegistry;
 }
 export interface TelegramSettingsMenuRuntime<TContext> {
-    openSettingsMenu: (chatId: number, replyToMessageId: number, ctx: TContext, threadId?: number, options?: Pick<TelegramApiCallOptions, "assertAuthority">) => Promise<void>;
+    openSettingsMenu: (chatId: number, replyToMessageId: number | undefined, ctx: TContext, threadId?: number, options?: Pick<TelegramApiCallOptions, "assertAuthority">) => Promise<void>;
     handleCallbackQuery: (query: {
         id: string;
         data?: string;

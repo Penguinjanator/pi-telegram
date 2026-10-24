@@ -2,9 +2,10 @@
 
 _This file owns unresolved project work only. Completed behavior belongs in `CHANGELOG.md`; durable contracts belong in `AGENTS.md` and `/docs`._
 
-## Request-identity hotfix publication
+## 0.57.11 publication checkpoint
 
-- [ ] Publish the 0.57.10 candidate containing completed follower request-identity hardening and bounded Windows fixture diagnostics through the guarded next-patch path. Recheck registry/version eligibility, require fresh release-candidate platform/shard checks, and let the owning tag workflow publish. Preserve existing tags and history. Reply-only recovery is still absent, and neither historical platform timeout is claimed fixed.
+- [ ] Validate and publish only the pre-publication follower reply-target fix through the protected dev-to-main release path. Require fresh Ubuntu, Windows and both macOS shard checks before merge, exact candidate/merged-tree equality, one immutable version tag and the repository-owned release workflow.
+- [ ] Confirm the published GitHub Release and public npm version, tag/gitHead identity, release notes and packed runtime/skills before closing this checkpoint. Keep post-refusal recovery and disposable-tab live acceptance open; do not reload the running session.
 
 ## Disposable Thread live acceptance
 
@@ -21,11 +22,13 @@ The prompt-cache report remains open for the reporter's offered live Anthropic c
 
 Evidence (2026-10-23 07:11–07:16): a `/start` sent in a former leader tab moved into a follower's journal as a raw original. After that follower's Thread was re-created by the restore probe, every execution attempt failed with `Telegram bus API call is not allowed for this follower` and retried every 60 s indefinitely, because the reply targeted a Thread the follower no longer owned. Terminal settlement alone is unsafe: the same rejection can be a benign race during a live-rebind pre-dispatch.
 
-### Reply-only recovery — next stabilization checkpoint
+### Post-refusal reply-only recovery — deferred contract gate
+
+Remaining scope is recovery after a reply is refused or recipient authority changes during publication, not initial destination selection. The latter is specified under the [reply ownership boundary](./docs/multi-instance-bus.md#reply-recovery-ownership-boundary); its native regression covers a stale source address, not the historical refusal itself or live Telegram restoration.
 
 A target-scoped reply refusal cannot prove that a command made no prior effects. Keep the handler-replay containment while preparing a replacement: unresolved inputs must remain in ordinary durable retry state, not be silently completed or retargeted as whole commands. Ordinary journal execution remains at-least-once, not globally exactly-once.
 
-- [ ] Implement a recipient-scoped reply-only recovery under the [reply ownership boundary](./docs/multi-instance-bus.md#reply-recovery-ownership-boundary), outside the containment hotfix. Ordinary sends return only a message ID, so the menu/delivery owner must participate in any destination change. Reuse selected-menu delivery only with its exact retained live-rebind/source grant; a raw journaled command cannot borrow it. Capture and recheck recipient/profile/session/registration authority at both ends, with no widening of the ordinary proxy.
+- [ ] Obtain explicit approval for a post-refusal recipient-delivery contract, then implement recipient-scoped reply-only recovery under the [reply ownership boundary](./docs/multi-instance-bus.md#reply-recovery-ownership-boundary), outside the containment hotfix. No ordinary recipient-scoped send grant is composed today: the local execution fence and queue-owner identity are insufficient, and receipt/admission namespaces cannot substitute for the registered recipient profile key. Ordinary sends return only a message ID, so the menu/delivery owner must participate in any destination change. Reuse selected-menu delivery only with its exact retained live-rebind/source grant; a raw journaled command cannot borrow it. Capture and recheck recipient/profile/session/registration authority at both ends, with no widening of the ordinary proxy.
 - [ ] Prove the reply-only path with the real follower API caller and worker: one replacement send before any reply chunk is acknowledged, consistent callback/message ownership and destination across every chunk, no stale reply anchor, no recovery for deletion/editing/unknown or lost ACKs, and no second send after authority changes. A command effect before a refused reply must execute once within that admission attempt; original journal evidence stays unchanged and diagnostics cannot change a successful outcome. Run typecheck and the full suite at the stable boundary. If these proofs cannot be supplied, retain the input without handler re-entry.
 - [ ] Live acceptance after the reply-only recovery checkpoint: a forwarded command whose follower Thread was re-created is answered in the current Thread (disposable tabs only).
 

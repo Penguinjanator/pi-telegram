@@ -90,7 +90,7 @@ export interface TelegramSettingsMenuCallbackDeps extends TelegramSettingsMutati
 export interface TelegramSettingsMenuRuntime<TContext> {
   openSettingsMenu: (
     chatId: number,
-    replyToMessageId: number,
+    replyToMessageId: number | undefined,
     ctx: TContext,
     threadId?: number,
     options?: Pick<TelegramApiCallOptions, "assertAuthority">,

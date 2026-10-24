@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+## 0.57.11: Follower Reply Target
+
+- `Follower command replies`: Status/model/settings and text replies from an admitted follower command select its acknowledged Thread before publication, not the old input Thread. A changed Thread drops the reply anchor; delivery, menu state and ownership use one destination. The journaled original and explicit selected-menu grants stay intact; no refused-send recovery, handler replay or proxy widening is added.
+
 ## 0.57.10: Follower Request Identity
 
 - `Follower request identity`: Follower API arguments use one JSON-wire snapshot before registration waits. Later caller mutation no longer changes the issued method/body or relabels a refused target and slow-call method. Ordinary and multipart calls retain wire JSON semantics and authority fences; refusal evidence still grants no resend or whole-command replay.

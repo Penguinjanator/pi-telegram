@@ -174,6 +174,7 @@ export interface TelegramInboundRouteRuntimeDeps<TMessage extends TelegramRouted
     getCurrentInstanceId?: () => string | undefined;
     getAdmissionScope?: () => string | undefined;
     getAdmissionJournalBinding?: () => string | undefined;
+    getCommandReplyTarget?: Commands.TelegramCommandTargetRuntimeDeps<TContext>["getReplyTarget"];
     getMessageOwnership?: Updates.TelegramMessageOwnershipLookup;
     getTargetOwnership?: Updates.TelegramTargetOwnershipLookup;
     recordMessageOwnership?: Updates.TelegramMessageOwnershipRecorder;
@@ -256,7 +257,7 @@ export interface TelegramInboundRouteRuntimeDeps<TMessage extends TelegramRouted
     isVoiceReplyActive?: () => boolean;
     updateSettingsMenuMessage?: (state: Menu.TelegramModelMenuState<TModel>, ctx: TContext) => Promise<void>;
     openQueueMenu: (chatId: number, replyToMessageId: number, ctx: TContext, threadId?: number, options?: Pick<TelegramApiCallOptions, "assertAuthority">) => Promise<void>;
-    openSettingsMenu?: (chatId: number, replyToMessageId: number, ctx: TContext, threadId?: number, options?: Pick<TelegramApiCallOptions, "assertAuthority">) => Promise<void>;
+    openSettingsMenu?: (chatId: number, replyToMessageId: number | undefined, ctx: TContext, threadId?: number, options?: Pick<TelegramApiCallOptions, "assertAuthority">) => Promise<void>;
     settingsMenuCallbackHandler?: (query: TCallbackQuery, ctx: TContext) => Promise<boolean>;
     queueMenuCallbackHandler: (query: TCallbackQuery, ctx: TContext) => Promise<boolean>;
     buttonActionStore?: OutboundHandlers.TelegramButtonActionStore;
@@ -303,7 +304,7 @@ export interface TelegramInboundRouteRuntimeDeps<TMessage extends TelegramRouted
     }) => Promise<string | undefined>;
     /** Starts the animated placeholder on an answered guest inline message. */
     startGuestPlaceholder?: (inlineMessageId: string) => void;
-    sendTextReply: (chatId: number, replyToMessageId: number, text: string, options?: {
+    sendTextReply: (chatId: number, replyToMessageId: number | undefined, text: string, options?: {
         parseMode?: "HTML";
         target?: Queue.TelegramQueueTarget;
         assertAuthority?: TelegramApiCallOptions["assertAuthority"];
