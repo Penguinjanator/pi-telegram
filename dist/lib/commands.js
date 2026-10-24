@@ -629,6 +629,7 @@ export function createTelegramCommandTargetQueueRuntime(deps) {
             createControlItem,
             enqueueControlItem: controlQueueController.enqueue,
         }),
+        getReplyTarget: deps.getReplyTarget,
         getAdmissionScope: deps.getAdmissionScope,
         getAdmissionJournalBinding: deps.getAdmissionJournalBinding,
         onControlQueued: deps.onControlQueued,
@@ -639,6 +640,22 @@ export function createTelegramCommandTargetQueueRuntime(deps) {
     });
 }
 export function createTelegramCommandTargetRuntime(deps) {
+    const getReplyTarget = (message, options) => {
+        const source = getTelegramCommandMessageTarget(message);
+        const recipient = options?.assertAuthority
+            ? undefined
+            : deps.getReplyTarget?.(message);
+        if (!recipient)
+            return source;
+        if (recipient.chatId !== source.chatId)
+            throw new Error("Telegram command reply cannot change its recipient chat.");
+        if (source.threadId !== undefined && recipient.threadId === undefined)
+            throw new Error("Telegram command cannot move a Thread reply to All.");
+        return {
+            ...recipient,
+            replyToMessageId: recipient.threadId === source.threadId ? source.replyToMessageId : undefined,
+        };
+    };
     return {
         enqueueControlItem: (message, ctx, controlType, statusSummary, execute) => {
             const sourceUpdateId = message.pi_telegram_source_update_id;
@@ -659,15 +676,15 @@ export function createTelegramCommandTargetRuntime(deps) {
             deps.enqueueControlItem(getTelegramCommandMessageTarget(message), ctx, controlType, statusSummary, execute, receipt ? [receipt] : undefined, receipt ? () => deps.onControlQueued?.(message, receipt) : undefined);
         },
         showStatus: (message, ctx, options) => {
-            const target = getTelegramCommandMessageTarget(message);
+            const target = getReplyTarget(message, options);
             return deps.showStatus(target.chatId, target.replyToMessageId, ctx, target.threadId, options);
         },
         openModelMenu: (message, ctx, options) => {
-            const target = getTelegramCommandMessageTarget(message);
+            const target = getReplyTarget(message, options);
             return deps.openModelMenu(target.chatId, target.replyToMessageId, ctx, target.threadId, options);
         },
         openSettingsMenu: async (message, ctx, options) => {
-            const target = getTelegramCommandMessageTarget(message);
+            const target = getReplyTarget(message, options);
             if (!deps.openSettingsMenu) {
                 await deps.sendTextReply(target.chatId, target.replyToMessageId, formatTelegramInformationHeading("🚫", "Settings menu is unavailable."), { target, parseMode: "HTML" });
                 return;
@@ -675,7 +692,7 @@ export function createTelegramCommandTargetRuntime(deps) {
             await deps.openSettingsMenu(target.chatId, target.replyToMessageId, ctx, target.threadId, options);
         },
         sendTextReply: async (message, text, options) => {
-            const target = getTelegramCommandMessageTarget(message);
+            const target = getReplyTarget(message, options);
             const assertAuthority = options?.assertAuthority, send = deps.sendTextReply;
             const capturedOptions = { ...options, target };
             assertAuthority?.();
@@ -1061,6 +1078,7 @@ export function createTelegramCommandHandlerTargetRuntime(deps) {
         }),
         appendControlItem: deps.appendControlItem,
         dispatchNextQueuedTelegramTurn: deps.dispatchNextQueuedTelegramTurn,
+        getReplyTarget: deps.getReplyTarget,
         getAdmissionScope: deps.getAdmissionScope,
         getAdmissionJournalBinding: deps.getAdmissionJournalBinding,
         onControlQueued: deps.onControlQueued,

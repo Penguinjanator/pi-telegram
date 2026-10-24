@@ -87,7 +87,7 @@ export interface TelegramMenuActionRuntimeDeps<TContext, TModel extends MenuMode
     storeModelMenuState: (state: TelegramModelMenuState<TModel>) => void;
     isIdle: (ctx: TContext) => boolean;
     canOfferInFlightModelSwitch: (ctx: TContext) => boolean;
-    sendTextReply: (chatId: number, replyToMessageId: number, text: string, options?: {
+    sendTextReply: (chatId: number, replyToMessageId: number | undefined, text: string, options?: {
         target?: {
             chatId: number;
             threadId?: number;
@@ -102,9 +102,9 @@ export interface TelegramMenuActionRuntime<TContext, TModel extends MenuModel = 
     updateModelMenuMessage: (state: TelegramModelMenuState<TModel>, ctx: TContext) => Promise<void>;
     updateThinkingMenuMessage: (state: TelegramModelMenuState<TModel>, ctx: TContext) => Promise<void>;
     updateStatusMessage: (state: TelegramModelMenuState<TModel>, ctx: TContext) => Promise<void>;
-    sendStatusMessage: (chatId: number, replyToMessageId: number, ctx: TContext, threadId?: number, options?: Pick<TelegramApiCallOptions, "assertAuthority">) => Promise<void>;
-    openModelMenu: (chatId: number, replyToMessageId: number, ctx: TContext, threadId?: number, options?: Pick<TelegramApiCallOptions, "assertAuthority">) => Promise<void>;
-    openThinkingMenu: (chatId: number, replyToMessageId: number, ctx: TContext, threadId?: number, options?: Pick<TelegramApiCallOptions, "assertAuthority">) => Promise<void>;
+    sendStatusMessage: (chatId: number, replyToMessageId: number | undefined, ctx: TContext, threadId?: number, options?: Pick<TelegramApiCallOptions, "assertAuthority">) => Promise<void>;
+    openModelMenu: (chatId: number, replyToMessageId: number | undefined, ctx: TContext, threadId?: number, options?: Pick<TelegramApiCallOptions, "assertAuthority">) => Promise<void>;
+    openThinkingMenu: (chatId: number, replyToMessageId: number | undefined, ctx: TContext, threadId?: number, options?: Pick<TelegramApiCallOptions, "assertAuthority">) => Promise<void>;
 }
 export declare function handleTelegramMenuCallbackEntry(callbackQueryId: string, data: string | undefined, state: TelegramModelMenuState | undefined, deps: TelegramMenuCallbackEntryDeps): Promise<void>;
 export declare function handleStoredTelegramMenuCallback<TModel extends MenuModel = MenuModel>(query: MenuCallbackQuery, deps: StoredTelegramMenuCallbackDeps<TModel>): Promise<void>;

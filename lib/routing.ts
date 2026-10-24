@@ -1499,6 +1499,8 @@ export interface TelegramInboundRouteRuntimeDeps<
   getCurrentInstanceId?: () => string | undefined;
   getAdmissionScope?: () => string | undefined;
   getAdmissionJournalBinding?: () => string | undefined;
+  getCommandReplyTarget?:
+    Commands.TelegramCommandTargetRuntimeDeps<TContext>["getReplyTarget"];
   getMessageOwnership?: Updates.TelegramMessageOwnershipLookup;
   getTargetOwnership?: Updates.TelegramTargetOwnershipLookup;
   recordMessageOwnership?: Updates.TelegramMessageOwnershipRecorder;
@@ -1640,7 +1642,7 @@ export interface TelegramInboundRouteRuntimeDeps<
   ) => Promise<void>;
   openSettingsMenu?: (
     chatId: number,
-    replyToMessageId: number,
+    replyToMessageId: number | undefined,
     ctx: TContext,
     threadId?: number,
     options?: Pick<TelegramApiCallOptions, "assertAuthority">,
@@ -1728,7 +1730,7 @@ export interface TelegramInboundRouteRuntimeDeps<
   startGuestPlaceholder?: (inlineMessageId: string) => void;
   sendTextReply: (
     chatId: number,
-    replyToMessageId: number,
+    replyToMessageId: number | undefined,
     text: string,
     options?: {
       parseMode?: "HTML";
@@ -10181,6 +10183,7 @@ export function createTelegramInboundRouteRuntime<
     appendControlItem: deps.queueMutationRuntime.append,
     getAdmissionScope: deps.getAdmissionScope,
     getAdmissionJournalBinding: deps.getAdmissionJournalBinding,
+    getReplyTarget: deps.getCommandReplyTarget,
     onControlQueued: (message, receipt) =>
       reportQueueAdmission([message], [receipt]),
     showStatus: deps.menuActions.sendStatusMessage,

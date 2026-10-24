@@ -3068,6 +3068,185 @@ for (const drift of ["none", "context", "generation", "epoch", "owner", "profile
   });
 }
 
+test("Journaled start after follower Thread re-creation keeps reply, menu and ownership on the recipient", async () => {
+  const result = await runNodeEval(`
+    import assert from "node:assert/strict";
+    import { mkdtemp, realpath, writeFile, rm } from "node:fs/promises";
+    import { join } from "node:path";
+    import { tmpdir } from "node:os";
+    import { setTimeout as wait } from "node:timers/promises";
+    import { mock } from "node:test";
+    let runtimeExtensionContextSequence = 0;
+    const createRuntimeExtensionContext = ${createRuntimeExtensionContext.toString()};
+    const createRuntimePiHarness = ${createRuntimePiHarness.toString()};
+    const base = ${JSON.stringify(new URL("../dist/", import.meta.url).href)};
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "pt-reply-recipient-")));
+    process.env.PI_CODING_AGENT_DIR = dir;
+    const { spawn } = await import("node:child_process");
+    let handlersEntered = 0, effects = 0;
+    const sourceTargets = [], sourceCopies = [], menuErrors = [], menus = [], ownership = [], sends = [];
+    let sourceJournal;
+    const commandsUrl = new URL("lib/commands.js", base), commandsModule = await import(commandsUrl.href);
+    mock.module(commandsUrl.href, { namedExports: { ...commandsModule,
+      createTelegramCommandHandlerTargetRuntime(deps) {
+        const record = deps.recordRuntimeEvent;
+        const actual = commandsModule.createTelegramCommandHandlerTargetRuntime({ ...deps,
+          recordRuntimeEvent(category, error, detail) {
+            if (category === "telegram-command" && detail?.command === "start" && detail.phase === "menu-render") menuErrors.push(String(error));
+            record?.(category, error, detail);
+          },
+        });
+        return Object.assign(async (...args) => {
+          if (args[0] === "start" && args[1].message_id === 501) {
+            handlersEntered++; effects++; sourceTargets.push(args[1].message_thread_id);
+            sourceCopies.push(structuredClone(sourceJournal.read().entries.find(entry => entry.updateId === 901)?.update));
+          }
+          return actual(...args);
+        }, actual);
+      },
+    } });
+    const menuUrl = new URL("lib/menu.js", base), menuModule = await import(menuUrl.href);
+    mock.module(menuUrl.href, { namedExports: { ...menuModule, createTelegramModelMenuRuntime(...args) {
+      const actual = menuModule.createTelegramModelMenuRuntime(...args); menus.push(actual); return actual;
+    } } });
+    const ownershipUrl = new URL("lib/ownership.js", base), ownershipModule = await import(ownershipUrl.href);
+    mock.module(ownershipUrl.href, { namedExports: { ...ownershipModule, createTelegramBusMessageOwnershipRuntime(...args) {
+      const actual = ownershipModule.createTelegramBusMessageOwnershipRuntime(...args); ownership.push(actual); return actual;
+    } } });
+    const Journal = await import(new URL("lib/journal.js", base));
+    const Paths = await import(new URL("lib/paths.js", base));
+    const Bus = await import(new URL("lib/bus.js", base));
+    const BusLeader = await import(new URL("lib/bus-leader.js", base));
+    const { default: extension } = await import(new URL("index.js", base));
+    const keepAlive = setInterval(() => {}, 60000);
+    const follower = createRuntimePiHarness();
+    const followers = Bus.createTelegramBusFollowerRegistry();
+    const leaderOwnership = ownershipModule.createTelegramBusMessageOwnershipRuntime({ instanceId: "fixture-leader",
+      getProfileKey: () => "fixture", listFollowers: followers.list });
+    const socketPath = Bus.getTelegramBusSocketPath(dir, process.platform, undefined, "consolidated");
+    let currentThread = 43, leaderChild, leaderExit;
+    const replyAttempts = [];
+    const authorize = Bus.createTelegramFollowerApiCallAuthorizer({ isMessageOwned: leaderOwnership.isOwnedByFollower });
+    const server = Bus.createTelegramBusLocalServer({ socketPath, handleEnvelope: BusLeader.createTelegramBusLeaderEnvelopeHandler({
+      followerRegistry: followers, authSecret: "fixture-secret",
+      protocolIdentity: Bus.createTelegramBusProtocolIdentity({ runtimeBuild: "fixture", capabilities: [
+        Bus.TELEGRAM_BUS_CAPABILITY_DURABLE_FOLLOWER_ADMISSION, Bus.TELEGRAM_BUS_CAPABILITY_QUEUE_HANDOFF,
+        Bus.TELEGRAM_BUS_CAPABILITY_CONNECT_RECOVERY] }),
+      provisionFollowerTarget: () => ({ chatId: 77, threadId: currentThread, slot: "A" }),
+      authorizeFollowerApiCall(input) {
+        const body = input.args[1];
+        if (handlersEntered && input.method === "call" && input.args[0] === "sendMessage" &&
+          body?.reply_markup?.inline_keyboard?.flat().some(button => button.callback_data === "menu:model"))
+          replyAttempts.push([body.message_thread_id, body[Bus.TELEGRAM_BUS_CROSS_TARGET_DELIVERY_FIELD]]);
+        return authorize(input);
+      },
+      recordFollowerMessageOwnership: leaderOwnership.recordFollower,
+      async callApi(method, args) {
+        assert.equal(method, "call");
+        const response = await globalThis.fetch("https://fixture/" + args[0], { body: JSON.stringify(args[1]) });
+        return (await response.json()).result;
+      },
+    }) });
+    const model = { provider: "fixture", id: "recipient-model" };
+    const registry = { refresh() {}, getAvailable: () => [model], isUsingOAuth: () => false };
+    const followerCtx = createRuntimeExtensionContext({ cwd: "/reply-follower", model, modelRegistry: registry, getContextUsage: () => undefined });
+    followerCtx.sessionManager.getEntries = () => [];
+    let nextMessage = 100, followerStarted = false;
+    const response = result => ({ json: async () => ({ ok: true, result }) });
+    globalThis.fetch = async (input, init) => {
+      const method = String(input).split("/").at(-1), body = init?.body ? JSON.parse(String(init.body)) : {};
+      if (method === "getMe") return response({ id: 123, username: "fixture_bot", has_topics_enabled: true });
+      if (method === "getUpdates" || method === "createForumTopic" || method === "deleteForumTopic")
+        throw new Error("The recipient must remain a passive follower: " + method);
+      if (method === "sendMessage" || method === "sendRichMessage") {
+        const messageId = ++nextMessage;
+        if (handlersEntered && body.reply_markup?.inline_keyboard?.flat().some(button => button.callback_data === "menu:model"))
+          sends.push({ body: structuredClone(body), messageId });
+        return response({ message_id: messageId });
+      }
+      if (["deleteWebhook", "setMyCommands", "editMessageText", "editForumTopic", "sendChatAction", "answerCallbackQuery"].includes(method)) return response(true);
+      throw new Error("Unexpected isolated API method: " + method);
+    };
+    const until = async predicate => {
+      const deadline = Date.now() + 10000;
+      while (!predicate()) {
+        if (Date.now() > deadline) throw new Error(JSON.stringify({ handlersEntered, effects, sends, menuErrors, currentThread }));
+        await wait(10);
+      }
+    };
+    try {
+      await writeFile(join(dir, "telegram.json"), JSON.stringify({ botToken: "123:reply-recipient", botId: 123, allowedUserId: 77,
+        threads: { automaticCleanup: false }, assistant: { activity: "quiet", timeInjection: "hidden" } }), { mode: 0o600 });
+      const leaderSource = [
+        "import * as Locks from " + JSON.stringify(new URL("lib/locks.js", base).href) + ";",
+        "import * as Threads from " + JSON.stringify(new URL("lib/threads.js", base).href) + ";",
+        "const owner = Locks.createTelegramLockRuntime({ statePath: " + JSON.stringify(Paths.resolveTelegramStatePath(dir)) + ", instanceId: 'fixture-leader', busSocketPath: " + JSON.stringify(socketPath) + ", busSecret: 'fixture-secret' });",
+        "if (!owner.acquire({ cwd: '/reply-leader' }).ok) throw new Error('Leader fixture acquisition failed');",
+        "const store = Threads.createTelegramTopicTargetStore({ path: " + JSON.stringify(Paths.resolveTelegramStatePath(dir)) + ", consolidated: { captureAuthority: () => owner.owns, publishIfOwned: owner.publishStateSectionIfOwned } });",
+        "await store.load(); store.setBotState({ threadMode: 'enabled' }); await store.persist();",
+        "const timer = setInterval(() => owner.refresh(), 1000); process.on('SIGTERM', () => { clearInterval(timer); owner.release(); process.exit(0); }); console.log('READY');",
+      ].join("\\n");
+      leaderChild = spawn(process.execPath, ["--input-type=module", "--eval", leaderSource], { stdio: ["ignore", "pipe", "pipe"] });
+      leaderExit = new Promise(resolve => leaderChild.once("exit", resolve));
+      await new Promise((resolve, reject) => {
+        let output = "", errors = "";
+        const timer = setTimeout(() => reject(new Error("Leader fixture startup: " + errors)), 5000);
+        leaderChild.stdout.on("data", chunk => { output += chunk; if (output.includes("READY")) { clearTimeout(timer); resolve(); } });
+        leaderChild.stderr.on("data", chunk => { errors += chunk; });
+        leaderChild.once("error", error => { clearTimeout(timer); reject(error); });
+      });
+      await server.start();
+      extension(follower.pi); followerStarted = true;
+      await follower.handlers.get("session_start")({}, followerCtx);
+      await follower.commands.get("telegram-connect").handler("", followerCtx);
+      assert.equal(followers.list().length, 1, "The production root registered through the real local bus");
+      const firstRegistration = followers.list()[0];
+      assert.equal(firstRegistration.target.threadId, 43);
+      assert.ok(firstRegistration.sessionId && firstRegistration.profileKey);
+      const journalPath = Paths.resolveTelegramSessionJournalPath(firstRegistration.sessionId, firstRegistration.profileKey, dir);
+      sourceJournal = Journal.createTelegramUpdateJournalStore({ path: journalPath, profileName: "default",
+        botIdentity: Journal.createTelegramUpdateJournalBotIdentity({ botToken: "123:reply-recipient", botId: 123 }) });
+      const original = { update_id: 901, message: { message_id: 501, chat: { id: 77, type: "private" },
+        from: { id: 77, is_bot: false }, message_thread_id: 41, text: "/start" } };
+      sourceJournal.appendBatch([original]);
+      assert.deepEqual(sourceJournal.read().entries.find(entry => entry.updateId === 901)?.update, original);
+      currentThread = 44;
+      await follower.commands.get("telegram-connect").handler("", followerCtx);
+      const current = followers.list()[0];
+      assert.equal(current.target.threadId, 44, "The replacement Thread is acknowledged by a fresh real registration");
+      assert.deepEqual([current.instanceId, current.sessionId, current.profileKey, current.cwd],
+        [firstRegistration.instanceId, firstRegistration.sessionId, firstRegistration.profileKey, firstRegistration.cwd]);
+      assert.notEqual(current.registrationGeneration, firstRegistration.registrationGeneration);
+      await until(() => menuErrors.length || sends.length && menus[0]?.getState(sends[0].messageId, 77));
+      assert.equal(sends.length, 1, JSON.stringify({ menuErrors, handlersEntered, sourceTargets }));
+      assert.deepEqual(replyAttempts, [[44, undefined]], "One ordinary authorized send, not a cross-target permission or refused-send retry");
+      assert.deepEqual([handlersEntered, effects], [1, 1], "No whole-handler replay after an earlier command effect");
+      assert.deepEqual(sourceTargets, [41], "Command input retains its original target");
+      assert.deepEqual(sourceCopies, [original], "Delivery must not rewrite the journaled original");
+      const sent = sends[0], target = { chatId: 77, threadId: 44 };
+      assert.equal(sent.body.message_thread_id, 44);
+      assert.equal(sent.body.reply_parameters, undefined, "No stale reply anchor in the replacement Thread");
+      const state = menus[0].getState(sent.messageId, 77);
+      assert.deepEqual([state.chatId, state.threadId, state.messageId], [77, 44, sent.messageId]);
+      assert.equal(ownership.length, 1, "Observe the real follower's local ownership runtime as well as the leader's");
+      for (const owner of [leaderOwnership, ...ownership]) assert.deepEqual(owner.store.get(77, sent.messageId)?.target, target,
+        "Leader and follower message ownership must agree with the actual menu destination");
+      assert.deepEqual(menuErrors, []);
+      await until(() => !sourceJournal.read().entries.some(entry => entry.updateId === 901));
+      assert.deepEqual(sourceJournal.read().entries, [], "The successfully handled original is no longer stuck in retry");
+      console.log(JSON.stringify({ handlersEntered, effects, replyThread: sent.body.message_thread_id, menuThread: state.threadId }));
+    } finally {
+      if (followerStarted) await follower.handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "reload" }, followerCtx);
+      await server.stop();
+      if (leaderChild && leaderChild.exitCode === null) leaderChild.kill("SIGTERM");
+      if (leaderExit) await leaderExit;
+      clearInterval(keepAlive); mock.restoreAll();
+      await rm(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+    }
+  `, { nodeArgs: ["--experimental-test-module-mocks"], timeoutMs: 25000 });
+  assert.equal(result.code, 0, result.stderr + "\n" + result.stdout);
+}, 30000);
+
 for (const profile of [undefined, "work"] as const) for (const boundary of ["review-reopen", "authority-race", "session-context", "session-generation"] as const) {
   const interrupted = boundary !== "review-reopen";
   void testRoot(`Fresh production root uses shared files and ignores released storage (${profile ?? "default"}, ${boundary})`,

@@ -1093,6 +1093,25 @@ export default function (pi) {
         },
         getAdmissionScope: getTelegramUpdateAdmissionScope,
         getAdmissionJournalBinding: getTelegramQueueJournalBinding,
+        getCommandReplyTarget(message) {
+            if (message.chat.type !== "private" ||
+                "business_connection_id" in message ||
+                !Updates.getTelegramUpdateExecutionFence(message) ||
+                lockRuntime.owns())
+                return undefined;
+            Updates.assertTelegramUpdateExecutionCurrent(message);
+            const binding = resolveTelegramFollowerJournalBinding();
+            const target = telegramBusFollowerRegistrationState.getTarget();
+            if (!telegramBusFollowerRegistrationState.isRegistered() ||
+                !binding ||
+                binding.recoveryKey !==
+                    followerAdmissionLifecycleRuntime.getJournalBindingKey() ||
+                !target ||
+                (threadStore.getBotState().threadMode === "enabled" &&
+                    target.threadId === undefined))
+                throw new Error("Telegram command reply lost its registered recipient.");
+            return { ...target };
+        },
         beginCommandEffectWork: publicationRuntime.beginWork,
         getMessageOwnership: messageOwnershipRuntime.getForwardOwnership,
         recordMessageOwnership: messageOwnershipRuntime.recordRouted,

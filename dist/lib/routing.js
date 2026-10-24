@@ -7139,6 +7139,7 @@ export function createTelegramInboundRouteRuntime(deps) {
         appendControlItem: deps.queueMutationRuntime.append,
         getAdmissionScope: deps.getAdmissionScope,
         getAdmissionJournalBinding: deps.getAdmissionJournalBinding,
+        getReplyTarget: deps.getCommandReplyTarget,
         onControlQueued: (message, receipt) => reportQueueAdmission([message], [receipt]),
         showStatus: deps.menuActions.sendStatusMessage,
         openModelMenu: deps.menuActions.openModelMenu,

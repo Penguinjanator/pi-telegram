@@ -11,6 +11,7 @@ import type { TelegramPromptTemplateCommand } from "./prompt-templates.ts";
 import { createTelegramControlItemBuilder, type PendingTelegramControlItem, type TelegramControlQueueController, type TelegramControlQueueControllerDeps, type TelegramQueueAdmissionReceipt } from "./queue.ts";
 import { type TelegramBridgeStatusLineOptions } from "./status.ts";
 import { type TelegramApiCallOptions } from "./telegram-api.ts";
+import type { TelegramTarget } from "./target.ts";
 import type { TelegramSessionReplacementIntent } from "./threads.ts";
 import { type TelegramDeferredSourceEvidence, type TelegramLiveSourceCompletionReadiness, type TelegramQueueAdmissionReceiptLike } from "./updates.ts";
 export type TelegramHeldCommandName = "status" | "start" | "help" | "abort" | "stop" | "next" | "continue";
@@ -383,11 +384,13 @@ export interface TelegramCommandTargetRuntimeDeps<TContext> {
     enqueueControlItem: (target: TelegramCommandMessageTarget, ctx: TContext, controlType: TelegramControlCommandType, statusSummary: string, execute: (ctx: TContext) => Promise<void>, admissionReceipts?: TelegramQueueAdmissionReceipt[], onQueued?: (item: PendingTelegramControlItem<TContext>) => void) => void;
     getAdmissionScope?: () => string | undefined;
     getAdmissionJournalBinding?: () => string | undefined;
+    /** Ordinary reply destination selected before publication, not resend authority. */
+    getReplyTarget?: (message: TelegramCommandRuntimeMessage) => TelegramTarget | undefined;
     onControlQueued?: (message: TelegramCommandRuntimeMessage, receipt: TelegramQueueAdmissionReceipt) => void;
-    showStatus: (chatId: number, replyToMessageId: number, ctx: TContext, threadId?: number, options?: Pick<TelegramApiCallOptions, "assertAuthority">) => Promise<void>;
-    openModelMenu: (chatId: number, replyToMessageId: number, ctx: TContext, threadId?: number, options?: Pick<TelegramApiCallOptions, "assertAuthority">) => Promise<void>;
-    openSettingsMenu?: (chatId: number, replyToMessageId: number, ctx: TContext, threadId?: number, options?: Pick<TelegramApiCallOptions, "assertAuthority">) => Promise<void>;
-    sendTextReply: (chatId: number, replyToMessageId: number, text: string, options?: {
+    showStatus: (chatId: number, replyToMessageId: number | undefined, ctx: TContext, threadId?: number, options?: Pick<TelegramApiCallOptions, "assertAuthority">) => Promise<void>;
+    openModelMenu: (chatId: number, replyToMessageId: number | undefined, ctx: TContext, threadId?: number, options?: Pick<TelegramApiCallOptions, "assertAuthority">) => Promise<void>;
+    openSettingsMenu?: (chatId: number, replyToMessageId: number | undefined, ctx: TContext, threadId?: number, options?: Pick<TelegramApiCallOptions, "assertAuthority">) => Promise<void>;
+    sendTextReply: (chatId: number, replyToMessageId: number | undefined, text: string, options?: {
         parseMode?: "HTML";
         target?: {
             chatId: number;

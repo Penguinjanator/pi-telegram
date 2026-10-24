@@ -264,7 +264,7 @@ export interface TelegramMenuActionRuntimeDeps<
   canOfferInFlightModelSwitch: (ctx: TContext) => boolean;
   sendTextReply: (
     chatId: number,
-    replyToMessageId: number,
+    replyToMessageId: number | undefined,
     text: string,
     options?: {
       target?: { chatId: number; threadId?: number };
@@ -294,21 +294,21 @@ export interface TelegramMenuActionRuntime<
   ) => Promise<void>;
   sendStatusMessage: (
     chatId: number,
-    replyToMessageId: number,
+    replyToMessageId: number | undefined,
     ctx: TContext,
     threadId?: number,
     options?: Pick<TelegramApiCallOptions, "assertAuthority">,
   ) => Promise<void>;
   openModelMenu: (
     chatId: number,
-    replyToMessageId: number,
+    replyToMessageId: number | undefined,
     ctx: TContext,
     threadId?: number,
     options?: Pick<TelegramApiCallOptions, "assertAuthority">,
   ) => Promise<void>;
   openThinkingMenu: (
     chatId: number,
-    replyToMessageId: number,
+    replyToMessageId: number | undefined,
     ctx: TContext,
     threadId?: number,
     options?: Pick<TelegramApiCallOptions, "assertAuthority">,
