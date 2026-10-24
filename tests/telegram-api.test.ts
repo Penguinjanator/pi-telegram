@@ -824,53 +824,93 @@ test("Telegram bridge API runtime owns reply-markup edits", async () => {
   ]);
 });
 
-test("Telegram bridge API runtime coalesces identical actions and suppresses concurrent chat peers", async () => {
-  let nowMs = 1000;
-  let releaseFirst: (value: boolean) => void = () => {};
-  const firstResult = new Promise<boolean>((resolve) => {
-    releaseFirst = resolve;
-  });
+test("Telegram bridge API runtime coalesces exact actions while different Threads send independently", async () => {
+  let nowMs = 1000, firstSettled = false;
+  const firstResult = Promise.withResolvers<boolean>();
+  const secondResult = Promise.withResolvers<boolean>();
+  const calls: number[] = [];
   const callOptions: Array<{ maxAttempts?: number } | undefined> = [];
-  let calls = 0;
   const runtime = createTelegramBridgeApiRuntime({
     client: createApiRuntimeClient({
-      call: async <TResponse>(
-        _method: string,
-        _body: Record<string, unknown>,
-        options?: TelegramApiCallOptions,
-      ) => {
-        calls += 1;
+      call: async <TResponse>(_method: string, body: Record<string, unknown>, options?: TelegramApiCallOptions) => {
+        const thread = Number(body.message_thread_id);
+        calls.push(thread);
         callOptions.push(options);
-        return (calls === 1 ? await firstResult : true) as TResponse;
+        return await (thread === 41 ? firstResult.promise : secondResult.promise) as TResponse;
       },
     }),
-    tempDir: "/tmp",
-    maxFileSizeBytes: 1,
-    tempFileMaxAgeMs: 1,
-    recordRuntimeEvent: () => {},
-    now: () => nowMs,
-    chatActionMinIntervalMs: 2000,
+    tempDir: "/tmp", maxFileSizeBytes: 1, tempFileMaxAgeMs: 1,
+    recordRuntimeEvent: () => {}, now: () => nowMs, chatActionMinIntervalMs: 2000,
   });
-  const body = { chat_id: 7, action: "typing" };
+  const send = (thread: number) => runtime.sendTypingAction(7, { message_thread_id: thread });
+  const first = send(41).then(value => { firstSettled = true; return value; });
+  const joinedFirst = send(41);
+  const second = send(42), joinedSecond = send(42);
+  try {
+    await Promise.resolve();
+    assert.deepEqual(calls, [41, 42], "Both concrete Threads issue before either request completes");
+    secondResult.resolve(true);
+    assert.deepEqual(await Promise.all([second, joinedSecond]), [true, true]);
+    assert.equal(firstSettled, false, "A slow Thread cannot delay its peer");
+    firstResult.resolve(true);
+    assert.deepEqual(await Promise.all([first, joinedFirst]), [true, true]);
+    const policy = { assertAuthority: undefined, retryRateLimit: false, maxAttempts: 1, retrySafety: "non-idempotent" };
+    assert.deepEqual(callOptions, [policy, policy]);
+    nowMs = 2999;
+    await Promise.all([send(41), send(42)]);
+    assert.deepEqual(calls, [41, 42], "Each exact action retains its own minimum interval");
+    nowMs = 3000;
+    await Promise.all([send(41), send(42)]);
+    assert.deepEqual(calls, [41, 42, 41, 42]);
+  } finally {
+    firstResult.resolve(true); secondResult.resolve(true);
+    await Promise.all([first, joinedFirst, second, joinedSecond]);
+  }
+});
 
-  const first = runtime.call<boolean>("sendChatAction", body);
-  const joined = runtime.call<boolean>("sendChatAction", body);
-  const suppressed = runtime.call<boolean>("sendChatAction", {
-    ...body,
-    message_thread_id: 9,
+test("Concurrent Thread actions retain one shared 429 cooldown through peer completion", async () => {
+  let nowMs = 1000;
+  const first = Promise.withResolvers<Response>(), second = Promise.withResolvers<Response>();
+  const calls: number[] = [], events: Record<string, unknown>[] = [];
+  const restoreFetch = setApiTestFetch(async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as { message_thread_id: number };
+    calls.push(body.message_thread_id);
+    return body.message_thread_id === 41 ? first.promise
+      : body.message_thread_id === 42 ? second.promise : createApiJsonResponse(true);
   });
-  assert.equal(await suppressed, true);
-  assert.equal(calls, 1);
-  releaseFirst(true);
-  assert.deepEqual(await Promise.all([first, joined]), [true, true]);
-  assert.deepEqual(callOptions, [{ retryRateLimit: false, maxAttempts: 1, retrySafety: "non-idempotent" }]);
-
-  nowMs = 2999;
-  assert.equal(await runtime.call<boolean>("sendChatAction", body), true);
-  assert.equal(calls, 1);
-  nowMs = 3000;
-  assert.equal(await runtime.call<boolean>("sendChatAction", body), true);
-  assert.equal(calls, 2);
+  try {
+    const runtime = createTelegramBridgeApiRuntime({
+      client: createTelegramApiClient(() => "123:fixture"),
+      tempDir: "/tmp", maxFileSizeBytes: 1, tempFileMaxAgeMs: 1,
+      recordRuntimeEvent: (_kind, _error, details) => { events.push(details ?? {}); },
+      now: () => nowMs, chatActionMinIntervalMs: 2000,
+    });
+    const send = (thread: number) => runtime.sendTypingAction(7, { message_thread_id: thread });
+    const a = send(41), b = send(42);
+    try {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      assert.deepEqual(calls, [41, 42]);
+      second.resolve(createApiJsonResponse(true));
+      await b;
+      await send(43);
+      assert.deepEqual(calls, [41, 42, 43], "Peer completion cannot replace the still-pending first call\'s chat state");
+      first.resolve(createApiErrorResponse(429, "Too Many Requests: retry after 3", new Headers({ "retry-after": "3" })));
+      assert.equal(await a, true);
+      assert.deepEqual(events, [{ method: "sendChatAction", rateLimited: true, retryAfterMs: 3000 }]);
+      nowMs = 2000;
+      assert.equal(await send(44), true);
+      assert.deepEqual(calls, [41, 42, 43], "A late 429 must still govern every peer Thread");
+      nowMs = 3999;
+      await send(44);
+      assert.deepEqual(calls, [41, 42, 43]);
+      nowMs = 4000;
+      await send(44);
+      assert.deepEqual(calls, [41, 42, 43, 44], "Only a fresh action after retry_after may issue");
+    } finally {
+      first.resolve(createApiJsonResponse(true)); second.resolve(createApiJsonResponse(true));
+      await Promise.all([a, b]);
+    }
+  } finally { restoreFetch(); }
 });
 
 test("Telegram bridge API runtime bounds active chat-action gates", async () => {

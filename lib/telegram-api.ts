@@ -2090,7 +2090,8 @@ export function createTelegramBridgeApiRuntime(
     notBeforeMs: number;
   };
   const chatActionGates = new Map<string, ChatActionGate>();
-  const chatActionChatGates = new Map<string, ChatActionGate>();
+  // Pin shared cooldowns until every concurrent Thread settles; this state never owns their sends.
+  const chatActionChatGates = new Map<string, { pendingRequests: number; notBeforeMs: number }>();
   const getChatActionKeys = (
     method: string,
     body: Record<string, unknown>,
@@ -2130,7 +2131,7 @@ export function createTelegramBridgeApiRuntime(
         }
       }
       for (const [key, candidate] of chatActionChatGates) {
-        if (!candidate.inFlight && nowMs >= candidate.notBeforeMs) {
+        if (candidate.pendingRequests === 0 && nowMs >= candidate.notBeforeMs) {
           chatActionChatGates.delete(key);
         }
       }
@@ -2146,11 +2147,10 @@ export function createTelegramBridgeApiRuntime(
         if (chatActionChatGates.size >= chatActionMaxGates) {
           return true as TResponse;
         }
-        chatGate = { notBeforeMs: 0 };
+        chatGate = { pendingRequests: 0, notBeforeMs: 0 };
         chatActionChatGates.set(chatActionKeys.chat, chatGate);
       }
       if (gate.inFlight) return (await gate.inFlight) as TResponse;
-      if (chatGate.inFlight) return true as TResponse;
       if (nowMs < gate.notBeforeMs || nowMs < chatGate.notBeforeMs) {
         return true as TResponse;
       }
@@ -2198,10 +2198,10 @@ export function createTelegramBridgeApiRuntime(
         })
         .finally(() => {
           if (gate.inFlight === request) gate.inFlight = undefined;
-          if (chatGate.inFlight === request) chatGate.inFlight = undefined;
+          chatGate.pendingRequests--;
         });
       gate.inFlight = request;
-      chatGate.inFlight = request;
+      chatGate.pendingRequests++;
       return request;
     }
     try {

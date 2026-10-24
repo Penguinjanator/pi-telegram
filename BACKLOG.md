@@ -7,6 +7,10 @@ _This file owns unresolved project work only. Completed behavior belongs in `CHA
 - [ ] Publish only the unified Connect internal-dispatch change through the protected dev-to-main release path. Require fresh Ubuntu, Windows and both macOS shard checks before merge, exact candidate/merged-tree equality, one immutable version tag and the repository-owned release workflow.
 - [ ] Verify the published GitHub Release and public npm latest version, tag/gitHead identity, canonical notes and packed runtime/skills before closing this checkpoint. Preserve unrelated recovery and live-acceptance gates; do not reload the running session or delete live Threads.
 
+## Per-Thread typing hotfix publication
+
+- [ ] After explicit publication authorization, ship the independent Thread chat-action fix separately from the frozen Connect-only minor candidate, with fresh complete platform checks and verified tag/GitHub/npm identity. Do not reload the running session; isolated transport tests do not prove live Telegram presence.
+
 ## Disposable Thread live acceptance
 
 - [ ] After separate operator authorization, use disposable Telegram tabs to check leader Settings review/Back, one confirmed cleanup of an inactive slotless binding, preservation of its replacement letter holder, and visible outcome/recovery copy. Native filesystem and injected-transport tests do not prove live Telegram/client or native Windows acceptance. Never use production history as the disposable fixture.

@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- `Typing`: A pending activity request in one Thread no longer silently suppresses another Thread's typing. Exact chat/Thread/action calls still coalesce with their own minimum interval, while real Telegram 429 cooldowns remain shared across the chat, including late failures after a faster peer completes. Authority checks, one-attempt typing and bounded gate storage remain intact.
+
 ## 0.58.0: Unified Connect Gateway
 
 - `Pi commands`: Removes the standalone `/telegram-internal` gateway. Runtime-armed session replacement now dispatches `/telegram-connect --internal new <token>` after exact durable update completion. Internal calls bypass profile activation and connection/recovery; malformed, unarmed and replayed calls fail closed. `internal` remains a valid profile name.
