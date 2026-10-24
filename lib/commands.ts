@@ -625,6 +625,7 @@ export interface TelegramBridgeCommandStartPollingResult {
 }
 
 export interface TelegramBridgeCommandRegistrationDeps {
+  handleInternalAction?: TelegramSessionActionRuntime["handleInternalAction"];
   promptForConfig: (
     ctx: ExtensionCommandContext,
     profileName?: string,
@@ -790,6 +791,7 @@ export function registerTelegramBridgeCommands(
   pi: ExtensionAPI,
   deps: TelegramBridgeCommandRegistrationDeps,
 ): void {
+  const handleInternalAction = deps.handleInternalAction;
   pi.registerCommand("telegram-setup", {
     description: "<profile> — Configure Telegram bot token",
     handler: async (args, ctx) => {
@@ -805,9 +807,21 @@ export function registerTelegramBridgeCommands(
       ctx.ui.notify(deps.getStatusLines({ verbose }).join("\n"), "info");
     },
   });
-  pi.registerCommand("telegram-connect", {
+  pi.registerCommand(TELEGRAM_CONNECT_COMMAND_NAME, {
     description: "<profile> — Start Telegram bridge",
     handler: async (args, ctx) => {
+      const words = args.trim().split(/\s+/);
+      // Service dispatch never inherits profile activation or explicit-connect recovery authority.
+      if (words.some(word =>
+        word.toLowerCase().startsWith(TELEGRAM_INTERNAL_COMMAND_FLAG),
+      )) {
+        if (words[0] !== TELEGRAM_INTERNAL_COMMAND_FLAG || !handleInternalAction) {
+          ctx.ui.notify(TELEGRAM_INTERNAL_MANUAL_USE_MESSAGE, "warning");
+          return;
+        }
+        await handleInternalAction(words.slice(1).join(" "), ctx);
+        return;
+      }
       const sessionGeneration = deps.getSessionGeneration?.();
       let intentId: string | undefined;
       // Pi context getters throw after replacement; check plain intent/generation first.
@@ -4183,18 +4197,16 @@ async function handleTelegramCommandRuntime<
   );
 }
 
-export const TELEGRAM_INTERNAL_COMMAND_NAME = "telegram-internal";
-export const TELEGRAM_INTERNAL_COMMAND_DESCRIPTION =
-  "Internal Telegram command cannot be run manually";
+export const TELEGRAM_CONNECT_COMMAND_NAME = "telegram-connect";
+export const TELEGRAM_INTERNAL_COMMAND_FLAG = "--internal";
 export const TELEGRAM_INTERNAL_MANUAL_USE_MESSAGE =
-  "This internal Telegram command cannot be run manually.";
+  "This internal Telegram action cannot be run manually.";
 
 function delayTelegramSessionAction(delayMs: number): Promise<void> {
   return new Promise<void>((resolve) => setTimeout(resolve, delayMs));
 }
 
 export interface TelegramSessionActionRuntimeDeps {
-  registerCommand: Pi.ExtensionAPI["registerCommand"];
   sendUserMessage: Pi.ExtensionAPI["sendUserMessage"];
   notifyResult: (
     target: { chatId: number; threadId?: number; messageId: number },
@@ -4277,7 +4289,6 @@ function createTelegramSessionReplacementSettlementRuntime<TContext>(deps: {
 }
 
 export interface TelegramSessionActionAssemblyDeps {
-  registerCommand: Pi.ExtensionAPI["registerCommand"];
   sendUserMessage: Pi.ExtensionAPI["sendUserMessage"];
   store: {
     load: () => Promise<void>;
@@ -4359,7 +4370,6 @@ export function createTelegramSessionActionAssembly(
     report(new Error("Telegram new-session result delivery failed."));
   };
   const action = createTelegramSessionActionRuntime({
-    registerCommand: deps.registerCommand,
     sendUserMessage: deps.sendUserMessage,
     notifyResult(target, result) {
       return sendTerminalResult(target, result);
@@ -4491,7 +4501,10 @@ type TelegramPendingInternalAction = {
 };
 
 export interface TelegramSessionActionRuntime {
-  register: () => void;
+  handleInternalAction: (
+    args: string,
+    ctx: Pi.ExtensionCommandContext,
+  ) => Promise<void>;
   scheduleAfterUpdate: (
     updateId: number,
     target: { chatId: number; threadId?: number; messageId: number },
@@ -4512,7 +4525,6 @@ export function createTelegramSessionActionRuntime(
       }
     | undefined;
   let pendingAction: TelegramPendingInternalAction | undefined;
-  let registered = false;
 
   const reportFailure = (error: unknown): void => {
     try {
@@ -4523,37 +4535,34 @@ export function createTelegramSessionActionRuntime(
   };
 
   return {
-    register() {
-      if (registered) return;
-      registered = true;
-      deps.registerCommand(TELEGRAM_INTERNAL_COMMAND_NAME, {
-        description: TELEGRAM_INTERNAL_COMMAND_DESCRIPTION,
-        handler: async (args, ctx) => {
-          const action = pendingAction;
-          if (!action || args.trim() !== action.token) {
-            ctx.ui.notify(TELEGRAM_INTERNAL_MANUAL_USE_MESSAGE, "warning");
-            return;
+    async handleInternalAction(args, ctx) {
+      const action = pendingAction;
+      const [operation, token, ...extra] = args.trim().split(/\s+/);
+      if (
+        !action || operation !== "new" ||
+        token !== action.token || extra.length !== 0
+      ) {
+        ctx.ui.notify(TELEGRAM_INTERNAL_MANUAL_USE_MESSAGE, "warning");
+        return;
+      }
+      pendingAction = undefined;
+      switch (action.kind) {
+        case "replace-session":
+          try {
+            await deps.prepareReplacement?.(
+              ctx,
+              action.updateId,
+              action.target,
+            );
+            const result = await ctx.newSession();
+            if (result.cancelled)
+              await deps.notifyResult(action.target, "cancelled");
+          } catch (error) {
+            reportFailure(error);
+            await deps.notifyResult(action.target, "failure");
           }
-          pendingAction = undefined;
-          switch (action.kind) {
-            case "replace-session":
-              try {
-                await deps.prepareReplacement?.(
-                  ctx,
-                  action.updateId,
-                  action.target,
-                );
-                const result = await ctx.newSession();
-                if (result.cancelled)
-                  await deps.notifyResult(action.target, "cancelled");
-              } catch (error) {
-                reportFailure(error);
-                await deps.notifyResult(action.target, "failure");
-              }
-              return;
-          }
-        },
-      });
+          return;
+      }
     },
     scheduleAfterUpdate(updateId, target) {
       if (pendingUpdateId !== undefined || pendingAction !== undefined)
@@ -4572,9 +4581,10 @@ export function createTelegramSessionActionRuntime(
       pendingAction = { kind: "replace-session", token, updateId, target };
       void Promise.resolve()
         .then(() =>
-          deps.sendUserMessage(`/${TELEGRAM_INTERNAL_COMMAND_NAME} ${token}`, {
-            expandPromptTemplates: true,
-          }),
+          deps.sendUserMessage(
+            `/${TELEGRAM_CONNECT_COMMAND_NAME} ${TELEGRAM_INTERNAL_COMMAND_FLAG} new ${token}`,
+            { expandPromptTemplates: true },
+          ),
         )
         .catch((error) => {
           pendingAction = undefined;

@@ -166,6 +166,7 @@ export interface TelegramBridgeCommandStartPollingResult {
     owner?: string;
 }
 export interface TelegramBridgeCommandRegistrationDeps {
+    handleInternalAction?: TelegramSessionActionRuntime["handleInternalAction"];
     promptForConfig: (ctx: ExtensionCommandContext, profileName?: string) => Promise<void>;
     getStatusLines: (options?: TelegramBridgeStatusLineOptions) => string[];
     reloadConfig: () => Promise<void>;
@@ -661,11 +662,10 @@ export declare function createTelegramCommandHandler<TMessage extends TelegramCo
     prepareSelectedMenuCommand(command: ParsedTelegramCommand, messages: readonly TMessage[], ctx: TContext, admission: TelegramSelectedCommandAdmission): (() => Promise<boolean>) | undefined;
 };
 export declare function createTelegramCommandOrPromptDispatcher<TMessage, TContext>(deps: TelegramCommandOrPromptDispatcherDeps<TMessage, TContext>): (messages: TMessage[], ctx: TContext) => Promise<void>;
-export declare const TELEGRAM_INTERNAL_COMMAND_NAME = "telegram-internal";
-export declare const TELEGRAM_INTERNAL_COMMAND_DESCRIPTION = "Internal Telegram command cannot be run manually";
-export declare const TELEGRAM_INTERNAL_MANUAL_USE_MESSAGE = "This internal Telegram command cannot be run manually.";
+export declare const TELEGRAM_CONNECT_COMMAND_NAME = "telegram-connect";
+export declare const TELEGRAM_INTERNAL_COMMAND_FLAG = "--internal";
+export declare const TELEGRAM_INTERNAL_MANUAL_USE_MESSAGE = "This internal Telegram action cannot be run manually.";
 export interface TelegramSessionActionRuntimeDeps {
-    registerCommand: Pi.ExtensionAPI["registerCommand"];
     sendUserMessage: Pi.ExtensionAPI["sendUserMessage"];
     notifyResult: (target: {
         chatId: number;
@@ -697,7 +697,6 @@ export interface TelegramSessionReplacementSettlementDeps {
 }
 export declare function settleTelegramSessionReplacement(deps: TelegramSessionReplacementSettlementDeps): Promise<"none" | "settled" | "expired" | "failed" | "stale">;
 export interface TelegramSessionActionAssemblyDeps {
-    registerCommand: Pi.ExtensionAPI["registerCommand"];
     sendUserMessage: Pi.ExtensionAPI["sendUserMessage"];
     store: {
         load: () => Promise<void>;
@@ -753,7 +752,7 @@ export declare function createTelegramSessionActionAssembly(deps: TelegramSessio
     };
 };
 export interface TelegramSessionActionRuntime {
-    register: () => void;
+    handleInternalAction: (args: string, ctx: Pi.ExtensionCommandContext) => Promise<void>;
     scheduleAfterUpdate: (updateId: number, target: {
         chatId: number;
         threadId?: number;

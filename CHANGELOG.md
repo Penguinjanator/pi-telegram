@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+## 0.58.0: Unified Connect Gateway
+
+- `Pi commands`: Removes the standalone `/telegram-internal` gateway. Runtime-armed session replacement now dispatches `/telegram-connect --internal new <token>` after exact durable update completion. Internal calls bypass profile activation and connection/recovery; malformed, unarmed and replayed calls fail closed. `internal` remains a valid profile name.
+
 ## 0.57.11: Follower Reply Target
 
 - `Follower command replies`: Status/model/settings and text replies from an admitted follower command select its acknowledged Thread before publication, not the old input Thread. A changed Thread drops the reply anchor; delivery, menu state and ownership use one destination. The journaled original and explicit selected-menu grants stay intact; no refused-send recovery, handler replay or proxy widening is added.

@@ -201,6 +201,7 @@ export declare function createTelegramLiveTargetWorkObserver<TContext>(deps: {
 }, ctx: TContext) => TelegramBusLiveRebindWorkState;
 interface TelegramCommandsAndToolsBindingDeps {
     pi: Pi.ExtensionAPI;
+    handleInternalAction: Commands.TelegramSessionActionRuntime["handleInternalAction"];
     agentDir: string;
     configStore: Config.TelegramConfigStore;
     persistConfig: (config?: Config.TelegramConfig) => Promise<void>;
@@ -241,7 +242,7 @@ interface TelegramCommandsAndToolsBindingDeps {
     connectionIntent: NonNullable<Commands.TelegramBridgeCommandRegistrationDeps["connectionIntent"]>;
     recordRuntimeEvent: TelegramRuntimeEventRecorder;
 }
-export declare function registerTelegramCommandsAndTools({ pi, agentDir, configStore, persistConfig, setup, activeTurnRuntime, lockedPollingRuntime, stopPolling, getDisconnectThreadName, onTransportChanged, getStatusLines, buttonActionStore, sendMarkdownReply, sendChannelMarkdownMessage, sendChannelMediaMessage, listChannelPosts, mutateChannelPost, callMultipart, getDefaultChatId, getDefaultTarget, resolveAgentTarget, routeAgentMessage, canSendDirect, setGenerativeAppLiveSurfaceRuntime, recordRuntimeEvent, updateStatus, isContextCurrent, getSessionGeneration, connectionIntent, }: TelegramCommandsAndToolsBindingDeps): void;
+export declare function registerTelegramCommandsAndTools({ pi, handleInternalAction, agentDir, configStore, persistConfig, setup, activeTurnRuntime, lockedPollingRuntime, stopPolling, getDisconnectThreadName, onTransportChanged, getStatusLines, buttonActionStore, sendMarkdownReply, sendChannelMarkdownMessage, sendChannelMediaMessage, listChannelPosts, mutateChannelPost, callMultipart, getDefaultChatId, getDefaultTarget, resolveAgentTarget, routeAgentMessage, canSendDirect, setGenerativeAppLiveSurfaceRuntime, recordRuntimeEvent, updateStatus, isContextCurrent, getSessionGeneration, connectionIntent, }: TelegramCommandsAndToolsBindingDeps): void;
 interface TelegramLifecycleBindingDeps {
     pi: Pi.ExtensionAPI;
     publicationRuntime: TelegramBridgePublicationRuntime;
