@@ -20,7 +20,7 @@ const PI_CLI_AVAILABLE = (() => {
 
 function runNodeScript(
   script: string,
-  options: { env?: NodeJS.ProcessEnv; timeoutMs?: number } = {},
+  options: { env?: NodeJS.ProcessEnv; timeoutMs?: number; exitTimeoutMs?: number } = {},
 ): Promise<{
   code: number | null;
   signal: NodeJS.Signals | null;
@@ -44,25 +44,37 @@ function runNodeScript(
   child.stdout.on("data", (chunk) => {
     stdout += chunk;
   });
-  child.stderr.on("data", (chunk) => {
-    stderr += chunk;
-  });
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      child.kill("SIGKILL");
-      reject(
-        new Error(
-          `Child process did not exit. elapsedMs=${Math.round(performance.now() - startedAt)} stdout=${stdout} stderr=${stderr}`,
-        ),
-      );
-    }, options.timeoutMs ?? 20_000);
-    timeout.unref?.();
-    child.on("error", (error) => {
+    let exitTimeout: ReturnType<typeof setTimeout> | undefined;
+    const clearDeadlines = () => {
       clearTimeout(timeout);
+      if (exitTimeout) clearTimeout(exitTimeout);
+    };
+    const fail = (deadline: "overall" | "exit") => {
+      clearDeadlines();
+      child.kill("SIGKILL");
+      const phase = options.exitTimeoutMs === undefined ? "" : ` deadline=${deadline}`;
+      reject(new Error(
+        `Child process did not exit. elapsedMs=${Math.round(performance.now() - startedAt)}${phase} stdout=${stdout} stderr=${stderr}`,
+      ));
+    };
+    const timeout = setTimeout(() => fail("overall"), options.timeoutMs ?? 20_000);
+    timeout.unref?.();
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+      // Cold import is not an exit stall; only the exact child checkpoint arms the stricter exit guard.
+      if (options.exitTimeoutMs === undefined || exitTimeout ||
+          child.exitCode !== null || child.signalCode !== null ||
+          !/(?:^|\n)\[process-probe\] \{"role":"child","stage":"event-loop-drained",/.test(stderr)) return;
+      exitTimeout = setTimeout(() => fail("exit"), options.exitTimeoutMs);
+      exitTimeout.unref?.();
+    });
+    child.on("error", (error) => {
+      clearDeadlines();
       reject(error);
     });
     child.on("exit", (code, signal) => {
-      clearTimeout(timeout);
+      clearDeadlines();
       resolve({ code, signal, stdout, stderr });
     });
   });
@@ -281,6 +293,7 @@ test("Process diagnostics identify an injected shutdown stall without exposing f
       traceProcessStage("shutdown-start");
     `, {
       timeoutMs: 3000,
+      exitTimeoutMs: 1000,
       env: {
         PI_CODING_AGENT_DIR: "/private-fixture-path-not-for-diagnostics",
         PI_TELEGRAM_TEST_PROBE_SECRET: "private-fixture-token-not-for-diagnostics",
@@ -288,7 +301,7 @@ test("Process diagnostics identify an injected shutdown stall without exposing f
     }),
     (error: unknown) => {
       assert.ok(error instanceof Error);
-      assert.match(error.message, /Child process did not exit\. elapsedMs=\d+/);
+      assert.match(error.message, /Child process did not exit\. elapsedMs=\d+ deadline=overall/);
       assert.doesNotMatch(error.message, /private-fixture-(path|token)-not-for-diagnostics/);
       const samples = Array.from(error.message.matchAll(/\[process-probe\] (\{[^\n]+\})/g),
         (match) => JSON.parse(match[1]!) as { role: string; stage: string; elapsedMs: number; resources: string[] });
@@ -305,6 +318,20 @@ test("Process diagnostics identify an injected shutdown stall without exposing f
       return true;
     },
   );
+});
+
+test("Process exit deadline starts after the event-loop checkpoint, not during startup", async () => {
+  await assert.rejects(runNodeScript(`
+    ${processProbePrelude("child")}
+    await new Promise(resolve => setTimeout(resolve, 1100));
+    traceProcessStage("event-loop-drained");
+    await new Promise(resolve => setTimeout(resolve, 4000));
+  `, { timeoutMs: 15_000, exitTimeoutMs: 1000 }), (error: unknown) => {
+    assert.ok(error instanceof Error);
+    assert.match(error.message, /deadline=exit/);
+    assert.match(error.message, /"stage":"event-loop-drained"/);
+    return true;
+  });
 });
 
 test("Child process sharing the agent dir does not poll while parent owns Telegram lock", async (t) => {
@@ -463,9 +490,10 @@ test("Child process sharing the agent dir does not poll while parent owns Telegr
         PI_CODING_AGENT_DIR: agentDir,
         PI_TELEGRAM_TEST_METHOD_MARKER: markerPath,
       },
-      // Importing the complete extension can exceed the generic process-probe
-      // budget on a loaded Windows runner; the child still must exit naturally.
-      timeoutMs: process.platform === "win32" ? 15_000 : 5_000,
+      // Linux and macOS traces exceeded five seconds before import completion.
+      // Reuse the existing Windows total cap, but keep a strict post-checkpoint exit budget everywhere.
+      timeoutMs: 15_000,
+      exitTimeoutMs: 5_000,
     });
     const probeLines = child.stderr.split("\n").filter((line) => line.startsWith("[process-probe] "));
     if (probeLines.length) t.diagnostic(probeLines.join("\n"));

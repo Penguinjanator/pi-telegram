@@ -7,6 +7,7 @@
 ## 0.58.1: Independent Thread Typing
 
 - `Typing`: A pending activity request in one Thread no longer silently suppresses another Thread's typing. Exact chat/Thread/action calls still coalesce with their own minimum interval, while real Telegram 429 cooldowns remain shared across the chat, including late failures after a faster peer completes. Authority checks, one-attempt typing and bounded gate storage remain intact.
+- `Process validation`: Passive-child checks distinguish cold startup from natural exit: a 15-second total cap retains the existing Windows bound, while a separate five-second guard starts after the event-loop checkpoint on every platform. Regressions reject both a missing checkpoint and retained post-checkpoint work; no polling assertions, natural-exit requirement or job budgets are weakened.
 
 ## 0.58.0: Unified Connect Gateway
 
