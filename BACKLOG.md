@@ -2,10 +2,10 @@
 
 _This file owns unresolved project work only. Completed behavior belongs in `CHANGELOG.md`; durable contracts belong in `AGENTS.md` and `/docs`._
 
-## 0.58.0 publication checkpoint
+## 0.58.1 publication checkpoint
 
-- [ ] Publish only the unified Connect internal-dispatch change through the protected dev-to-main release path. Require fresh Ubuntu, Windows and both macOS shard checks before merge, exact candidate/merged-tree equality, one immutable version tag and the repository-owned release workflow.
-- [ ] Verify the published GitHub Release and public npm latest version, tag/gitHead identity, canonical notes and packed runtime/skills before closing this checkpoint. Preserve unrelated recovery and live-acceptance gates; do not reload the running session or delete live Threads.
+- [ ] Publish the independent Thread chat-action fix through the protected dev-to-main path, requiring fresh Ubuntu, Windows and both macOS shard checks at the exact candidate head and candidate/merged-tree equality. Keep the immutable Connect-only minor unchanged and verify its publication before issuing the hotfix tag.
+- [ ] Verify the hotfix GitHub Release and public npm latest, exact tag/gitHead identity, canonical notes, packed runtime/skills and provenance before closing this checkpoint. No live session reload or Telegram probes; controlled transport tests do not prove live client presence.
 
 ## Disposable Thread live acceptance
 
@@ -38,10 +38,10 @@ A target-scoped reply refusal cannot prove that a command made no prior effects.
 - [ ] Route an input that arrives in a tab bound to nothing through a fresh temporary routing tab (the All flow) instead of publishing the chooser in the orphan, deleting the orphan with it once nothing unspent remains. Needs its own durable-metadata design.
 - [ ] Live acceptance on disposable tabs only: Cancel on an orphan tab deletes it; a second unspent input keeps it until the last Cancel; a plain `std::map` option button is delivered as an ordinary prompt.
 
-## macOS process-exit test flake
+## Passive-child cold-import follow-up
 
-The 0.57.8 tag validation failed `Child process sharing the agent dir does not poll while parent owns Telegram lock` even when that file ran alone: `Child process did not exit. stdout= stderr=` at its existing child deadline. The other seven process tests and the identical pre-merge tree passed. That historical failure has no child-stage trace, so cold import, startup and a retained runtime handle remain competing explanations. Bounded diagnostic sampling is exhausted; passing traces showed imports up to 4.37 seconds against the five-second non-Windows child budget and natural exit within 8–14 ms after the event-loop checkpoint. These traces do not identify the original cause.
-- [ ] Retain bounded child-stage/resource diagnostics for the next genuinely failing passive-child trace; the original timeout is still unexplained. Do not spend more unchanged-head diagnostic samples. The parent records explicit shutdown separately; do not add a shutdown call to the passive child to make it pass. Correct a fixture/runtime cause only when the failing stage evidence supports it, and require fresh platform CI before resuming release recovery. Do not widen deadlines or describe the runner as the proven cause without measurement.
+The 0.57.8 tag validation failed `Child process sharing the agent dir does not poll while parent owns Telegram lock` even when that file ran alone: `Child process did not exit. stdout= stderr=` at its existing child deadline. The other seven process tests and the identical pre-merge tree passed. That historical failure has no child-stage trace, so cold import, startup and a retained runtime handle remain competing explanations. Bounded diagnostic sampling is exhausted; passing traces showed imports up to 4.37 seconds against the five-second non-Windows child budget and natural exit within 8–14 ms after the event-loop checkpoint. These traces do not identify the original cause. A later main-validation recurrence stopped after `eval` and `import-start`, with parent-clock `elapsedMs=5009` and no import-complete checkpoint. That trace locates this recurrence before import completion, not in natural exit or a retained post-checkpoint handle; the slow dependency/startup cause remains unknown. The independent tag-owned Release validation passed the same committed tree, which does not erase the failed main check. The initial hotfix candidate then showed the same pre-import-completion state on Ubuntu at `elapsedMs=5026`; the recurrence is not macOS-only. Slow dependency/startup cost remains unexplained, separate from the fixture's corrected startup/exit observation contract.
+- [ ] Validate the corrected phase-owned passive-child fixture in fresh complete platform CI before publication: bounded total startup, a strict post-readiness exit guard, unchanged no-poll/natural-exit assertions and no forced shutdown or retry. Controlled delayed-start/retained-work regressions and local native passes are not platform proof. For any genuine recurrence, preserve deadline and stage evidence before correcting runtime imports or budgets. Do not spend unchanged-head diagnostic samples or claim runner contention or the historical cause is proven.
 
 ## Windows Workspace-gate fixture timeout
 

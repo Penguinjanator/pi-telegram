@@ -1039,6 +1039,7 @@ export function createTelegramBridgeApiRuntime(deps) {
     const chatActionMinIntervalMs = Math.max(0, deps.chatActionMinIntervalMs ?? 2_000);
     const chatActionMaxGates = Math.max(1, deps.chatActionMaxGates ?? 256);
     const chatActionGates = new Map();
+    // Pin shared cooldowns until every concurrent Thread settles; this state never owns their sends.
     const chatActionChatGates = new Map();
     const getChatActionKeys = (method, body) => {
         if (method !== "sendChatAction")
@@ -1069,7 +1070,7 @@ export function createTelegramBridgeApiRuntime(deps) {
                 }
             }
             for (const [key, candidate] of chatActionChatGates) {
-                if (!candidate.inFlight && nowMs >= candidate.notBeforeMs) {
+                if (candidate.pendingRequests === 0 && nowMs >= candidate.notBeforeMs) {
                     chatActionChatGates.delete(key);
                 }
             }
@@ -1085,13 +1086,11 @@ export function createTelegramBridgeApiRuntime(deps) {
                 if (chatActionChatGates.size >= chatActionMaxGates) {
                     return true;
                 }
-                chatGate = { notBeforeMs: 0 };
+                chatGate = { pendingRequests: 0, notBeforeMs: 0 };
                 chatActionChatGates.set(chatActionKeys.chat, chatGate);
             }
             if (gate.inFlight)
                 return (await gate.inFlight);
-            if (chatGate.inFlight)
-                return true;
             if (nowMs < gate.notBeforeMs || nowMs < chatGate.notBeforeMs) {
                 return true;
             }
@@ -1127,11 +1126,10 @@ export function createTelegramBridgeApiRuntime(deps) {
                 .finally(() => {
                 if (gate.inFlight === request)
                     gate.inFlight = undefined;
-                if (chatGate.inFlight === request)
-                    chatGate.inFlight = undefined;
+                chatGate.pendingRequests--;
             });
             gate.inFlight = request;
-            chatGate.inFlight = request;
+            chatGate.pendingRequests++;
             return request;
         }
         try {
