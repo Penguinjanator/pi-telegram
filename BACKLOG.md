@@ -2,11 +2,6 @@
 
 _This file owns unresolved project work only. Completed behavior belongs in `CHANGELOG.md`; durable contracts belong in `AGENTS.md` and `/docs`._
 
-## 0.57.11 publication checkpoint
-
-- [ ] Validate and publish only the pre-publication follower reply-target fix through the protected dev-to-main release path. Require fresh Ubuntu, Windows and both macOS shard checks before merge, exact candidate/merged-tree equality, one immutable version tag and the repository-owned release workflow.
-- [ ] Confirm the published GitHub Release and public npm version, tag/gitHead identity, release notes and packed runtime/skills before closing this checkpoint. Keep post-refusal recovery and disposable-tab live acceptance open; do not reload the running session.
-
 ## Disposable Thread live acceptance
 
 - [ ] After separate operator authorization, use disposable Telegram tabs to check leader Settings review/Back, one confirmed cleanup of an inactive slotless binding, preservation of its replacement letter holder, and visible outcome/recovery copy. Native filesystem and injected-transport tests do not prove live Telegram/client or native Windows acceptance. Never use production history as the disposable fixture.
