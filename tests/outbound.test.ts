@@ -487,45 +487,28 @@ test("Comment preview stripping hides generic and partial comments", () => {
   );
 });
 
-test("Comments inside fenced code never activate actions and are stripped for Telegram", () => {
-  const markdown = [
-    "Example:",
-    "",
-    "```md",
-    "<!-- telegram_voice lang=ru",
-    "Do not speak.",
-    "-->",
-    "",
-    '<!-- telegram_button label="Run"',
-    "Do not queue.",
-    "-->",
-    "```",
-  ].join("\n");
-  const actions: unknown[] = [];
-  const buttonPlan = planTelegramButtonReply(markdown, {
-    registerAction: (action) => {
-      actions.push(action);
-      return `btn:${actions.length}`;
-    },
-  });
-  const voicePlan = planTelegramVoiceReply(markdown);
-  const combinedPlan = createTelegramOutboundReplyPlanner({
-    register: (action) => {
-      actions.push(action);
-      return `btn:${actions.length}`;
-    },
-  })(markdown);
-
-  assert.deepEqual(buttonPlan, { markdown });
-  assert.equal(voicePlan.voiceReplies, undefined);
-  assert.doesNotMatch(voicePlan.markdown, /<!--|-->/u);
-  assert.equal(combinedPlan.markdown, voicePlan.markdown);
-  assert.equal(combinedPlan.replyMarkup, undefined);
-  assert.deepEqual(actions, []);
-  assert.equal(stripTelegramCommentMarkupForPreview(markdown), voicePlan.markdown);
+test("Combined replies extract action comments before any Markdown fence rendering", () => {
+  for (const fence of ["md", "telegram_button"]) {
+    const markdown = [
+      "Visible answer.",
+      `\`\`\`${fence}`,
+      "<!-- telegram_voice {Speak.|ru} -->",
+      "<!-- telegram_button {Run|Do it.} -->",
+      "```",
+    ].join("\n");
+    const actions: unknown[] = [];
+    const plan = createTelegramOutboundReplyPlanner({
+      register: (action) => { actions.push(action); return "tgbtn:test"; },
+    })(markdown);
+    assert.deepEqual(actions, [{ text: "Run", prompt: "Do it." }]);
+    assert.deepEqual(plan.voiceReplies, [{ text: "Speak.", lang: "ru" }]);
+    assert.equal(plan.replyMarkup?.inline_keyboard[0]?.[0]?.text, "Run");
+    assert.doesNotMatch(plan.markdown, /<!--|-->/u);
+    assert.match(plan.markdown, /Visible answer\./u);
+  }
 });
 
-test("Outbound comments resume after indented and longer closing fences", () => {
+test("Footer comments activate on both sides of longer Markdown fences", () => {
   const markdown = [
     "Example:",
     "",
@@ -548,39 +531,24 @@ test("Outbound comments resume after indented and longer closing fences", () => 
       "Example:",
       "",
       "````md",
-      "<!-- telegram_button label=Skip -->",
+      "",
       "   ````",
     ].join("\n"),
   );
-  assert.deepEqual(actions, [{ text: "OK", prompt: "OK" }]);
+  assert.deepEqual(actions, [{ text: "Skip", prompt: "Skip" }, { text: "OK", prompt: "OK" }]);
 });
 
-test("Outbound action comments require top-level column-zero markers", () => {
-  const markdown = [
-    "Visible answer.",
-    "",
-    "  <!-- telegram_voice lang=ru",
-    "Indented voice.",
-    "  -->",
-    "",
-    '> <!-- telegram_button label="OK"',
-    "> Quoted prompt.",
-    "> -->",
-  ].join("\n");
+test("Outbound action comments ignore indentation, surrounding text and neighboring actions", () => {
+  const markdown = 'Visible <!-- telegram_voice {Speak.} --><!-- telegram_button {OK|Continue.} --> answer.';
   const actions: unknown[] = [];
-  const voicePlan = planTelegramVoiceReply(markdown);
-  assert.equal(voicePlan.markdown, "Visible answer.");
-  assert.equal(voicePlan.voiceReplies, undefined);
-  assert.deepEqual(
-    planTelegramButtonReply(markdown, {
-      registerAction: (action) => {
-        actions.push(action);
-        return `btn:${actions.length}`;
-      },
-    }),
-    { markdown },
-  );
-  assert.deepEqual(actions, []);
+  const plan = createTelegramOutboundReplyPlanner({
+    register: (action) => { actions.push(action); return "tgbtn:test"; },
+  })(markdown);
+  assert.equal(plan.markdown, "Visible  answer.");
+  assert.deepEqual(plan.voiceReplies, [{ text: "Speak." }]);
+  assert.deepEqual(actions, [{ text: "OK", prompt: "Continue." }]);
+  assert.equal(plan.replyMarkup?.inline_keyboard[0]?.[0]?.text, "OK");
+  assert.equal(stripTelegramCommentMarkupForPreview(markdown), "Visible  answer.");
 });
 
 test("Button reply planner supports independent action comments", () => {

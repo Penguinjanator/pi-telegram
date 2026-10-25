@@ -49,7 +49,7 @@ An app name is a unique lowercase ASCII identifier accepted by the runtime's pat
 
 ## Inference-Bypass Syntax
 
-Compact Matrix Literal and full JSON buttons keep their existing `label + prompt` contract. App output may use hidden `telegram_button` comments for footer controls or standalone triple-backtick `telegram_button` blocks between paragraphs; both singleton cells and mixed matrices retain the same generation/revision-bound routing. In-body controls acknowledge clicks without recoloring the message; HTML compatibility moves them to the footer. A bound action is encoded entirely in the prompt string:
+Compact Matrix Literal and full JSON buttons keep their existing `label + prompt` contract. App output may use hidden `telegram_button` comments for footer controls or standalone `telegram_button` fenced blocks between paragraphs (three or more backticks or tildes, horizontal indentation/whitespace tolerated, same-marker closure no shorter than the opening); both singleton cells and mixed matrices retain the same generation/revision-bound routing. In-body controls acknowledge clicks without recoloring the message; HTML compatibility moves them to the footer. A bound action is encoded entirely in the prompt string:
 
 ```ebnf
 bound-action = app "::" method [ "(" json-value ")" ]

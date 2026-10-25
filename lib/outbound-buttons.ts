@@ -15,7 +15,7 @@ import {
   parseTelegramActionPayloadRows,
   parseTelegramButtonPayloadRows,
   replaceTelegramButtonFences,
-  replaceTopLevelHtmlComments,
+  replaceTelegramHtmlComments,
 } from "./outbound-markup.ts";
 import {
   type PendingTelegramTurn,
@@ -237,8 +237,21 @@ export function planTelegramButtonReply(
       ),
     );
   };
+  const footerKeyboard: TelegramOutboundButtonMarkup["inline_keyboard"] = [];
+  const stripped = replaceTelegramHtmlComments(markdown, (comment) => {
+    const command = "telegram_button";
+    const normalizedContent = comment.content
+      .replace(/^\s+/, "")
+      .replace(/^!/, "");
+    if (!normalizedContent.startsWith(command)) return comment.raw;
+    const payloadRows = parseTelegramActionPayloadRows(comment, command);
+    if (!payloadRows) return "";
+    const rows = buildRows(payloadRows, false);
+    if (rows) footerKeyboard.push(...rows);
+    return "";
+  });
   const withRichButtons = replaceTelegramButtonFences(
-    markdown,
+    stripped,
     (payload, closed) => {
       if (!closed) return "";
       const payloadRows = parseTelegramButtonPayloadRows(payload);
@@ -253,19 +266,8 @@ export function planTelegramButtonReply(
       return `\n${rows.map(renderTelegramRichButtonRow).join("\n\n")}\n`;
     },
   );
-  const stripped = replaceTopLevelHtmlComments(withRichButtons, (comment) => {
-    const command = "telegram_button";
-    const normalizedContent = comment.content
-      .replace(/^\s+/, "")
-      .replace(/^!/, "");
-    if (!normalizedContent.startsWith(command)) return comment.raw;
-    const payloadRows = parseTelegramActionPayloadRows(comment, command);
-    if (!payloadRows) return "";
-    const rows = buildRows(payloadRows, false);
-    if (rows) keyboard.push(...rows);
-    return "";
-  });
-  const visibleMarkdown = normalizeMarkdownAfterButtonExtraction(stripped);
+  keyboard.push(...footerKeyboard);
+  const visibleMarkdown = normalizeMarkdownAfterButtonExtraction(withRichButtons);
   return {
     markdown:
       keyboard.length > 0 && !visibleMarkdown

@@ -4,7 +4,7 @@
  * Owns assistant-authored telegram_button extraction, button action storage, callback handling, and prompt-turn construction
  */
 import { randomUUID } from "node:crypto";
-import { getTelegramActionString as getTelegramButtonString, parseTelegramActionPayloadRows, parseTelegramButtonPayloadRows, replaceTelegramButtonFences, replaceTopLevelHtmlComments, } from "./outbound-markup.js";
+import { getTelegramActionString as getTelegramButtonString, parseTelegramActionPayloadRows, parseTelegramButtonPayloadRows, replaceTelegramButtonFences, replaceTelegramHtmlComments, } from "./outbound-markup.js";
 import { truncateTelegramQueueSummary, } from "./queue.js";
 const TELEGRAM_BUTTON_CALLBACK_PREFIX = "tgbtn";
 const TELEGRAM_BUTTON_ACTION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -117,7 +117,23 @@ export function planTelegramButtonReply(markdown, deps) {
                 }),
             }));
     };
-    const withRichButtons = replaceTelegramButtonFences(markdown, (payload, closed) => {
+    const footerKeyboard = [];
+    const stripped = replaceTelegramHtmlComments(markdown, (comment) => {
+        const command = "telegram_button";
+        const normalizedContent = comment.content
+            .replace(/^\s+/, "")
+            .replace(/^!/, "");
+        if (!normalizedContent.startsWith(command))
+            return comment.raw;
+        const payloadRows = parseTelegramActionPayloadRows(comment, command);
+        if (!payloadRows)
+            return "";
+        const rows = buildRows(payloadRows, false);
+        if (rows)
+            footerKeyboard.push(...rows);
+        return "";
+    });
+    const withRichButtons = replaceTelegramButtonFences(stripped, (payload, closed) => {
         if (!closed)
             return "";
         const payloadRows = parseTelegramButtonPayloadRows(payload);
@@ -133,22 +149,8 @@ export function planTelegramButtonReply(markdown, deps) {
         }
         return `\n${rows.map(renderTelegramRichButtonRow).join("\n\n")}\n`;
     });
-    const stripped = replaceTopLevelHtmlComments(withRichButtons, (comment) => {
-        const command = "telegram_button";
-        const normalizedContent = comment.content
-            .replace(/^\s+/, "")
-            .replace(/^!/, "");
-        if (!normalizedContent.startsWith(command))
-            return comment.raw;
-        const payloadRows = parseTelegramActionPayloadRows(comment, command);
-        if (!payloadRows)
-            return "";
-        const rows = buildRows(payloadRows, false);
-        if (rows)
-            keyboard.push(...rows);
-        return "";
-    });
-    const visibleMarkdown = normalizeMarkdownAfterButtonExtraction(stripped);
+    keyboard.push(...footerKeyboard);
+    const visibleMarkdown = normalizeMarkdownAfterButtonExtraction(withRichButtons);
     return {
         markdown: keyboard.length > 0 && !visibleMarkdown
             ? DEFAULT_TELEGRAM_BUTTON_REPLY_MARKDOWN

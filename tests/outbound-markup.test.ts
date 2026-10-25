@@ -1,13 +1,13 @@
 /**
  * Regression tests for Telegram outbound markup helpers
- * Exercises top-level assistant action comment parsing, stripping, and voice reply planning
+ * Exercises delimiter-based assistant action comment parsing, stripping, and voice reply planning
  */
 
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  collectTopLevelHtmlComments,
+  collectTelegramHtmlComments,
   getTelegramActionString,
   planTelegramVoiceReply,
   stripTelegramCommentMarkupForDelivery,
@@ -34,19 +34,57 @@ test("Drafts hide complete and unfinished button fences but preserve outer code 
   assert.equal(stripTelegramCommentMarkupForPreview(example), example);
 });
 
-test("Markup collector ignores comments inside fenced code", () => {
-  const markdown = [
-    "```",
-    "<!-- telegram_voice: literal -->",
-    "```",
-    "",
-    "<!-- telegram_voice: real -->",
-  ].join("\n");
+test("Drafts hide relaxed button fences without activating or exposing payloads", () => {
+  for (const marker of ["`", "~"]) {
+    const opening = ` \t${marker.repeat(4)} \ttelegram_button \t`;
+    for (const tail of ["", `\n\t${marker.repeat(5)}\nAfter`]) {
+      const preview = stripTelegramCommentMarkupForPreview(`Before\n${opening}\n{Hidden|secret prompt}${tail}`);
+      assert.equal(preview, tail ? "Before\n\nAfter" : "Before");
+      assert.doesNotMatch(preview, /secret|telegram_button/u);
+    }
+    const example = `    ${marker.repeat(5)}markdown\n${opening}\n{Literal}\n${marker.repeat(4)}\n    ${marker.repeat(5)}`;
+    assert.equal(stripTelegramCommentMarkupForPreview(example), example.trim());
+  }
+});
 
-  const { comments } = collectTopLevelHtmlComments(markdown);
+test("Action comments depend only on delimiters and payload, retaining exact source spans", () => {
+  const raw = '<!-- telegram_voice {Speak.|en} -->';
+  for (const [before, after] of [
+    ["", ""], [" ", " "], ["    ", ""], ["\t", ""], [" \t  ", ""],
+    ["Text ", " tail"], ["> ", ""], ["- ", ""], ["1. ", ""],
+    ["`", "`"], ["```md\n", "\n```"], ["~~~~md\n", "\n~~~~"],
+    ["\\", ""],
+  ]) {
+    const markdown = `Before\r\n${before}${raw}${after}\r\nAfter`;
+    const { comments } = collectTelegramHtmlComments(markdown);
+    assert.equal(comments.length, 1);
+    assert.equal(comments[0]?.raw, raw);
+    assert.equal(markdown.slice(comments[0]!.start, comments[0]!.end), raw);
+    const plan = planTelegramVoiceReply(markdown);
+    assert.deepEqual(plan.voiceReplies, [{ text: "Speak.", lang: "en" }]);
+    assert.equal(plan.markdown, `Before\r\n${before}${after}\r\nAfter`);
+  }
+});
 
-  assert.equal(comments.length, 1);
-  assert.equal(comments[0]?.content.trim(), "telegram_voice: real");
+test("Adjacent comments on one line are independent and open tails never activate", () => {
+  const first = '<!-- telegram_voice {First.} -->';
+  const second = '<!-- telegram_voice {Second.} -->';
+  const markdown = `Text ${first}${second} tail <!-- telegram_voice {Unfinished.}`;
+  const result = collectTelegramHtmlComments(markdown);
+  assert.deepEqual(result.comments.map((comment) => comment.raw), [first, second]);
+  assert.equal(result.openCommentStart, markdown.lastIndexOf("<!--"));
+  assert.deepEqual(planTelegramVoiceReply(markdown).voiceReplies, [
+    { text: "First." }, { text: "Second." },
+  ]);
+  assert.equal(planTelegramVoiceReply(markdown).markdown, "Text  tail");
+  for (const tail of ["<", "<!", "<!-", "<!-- private"]) {
+    assert.equal(stripTelegramCommentMarkupForPreview(`Text ${tail}`), "Text");
+    assert.equal(stripTelegramCommentMarkupForDelivery(`Text ${tail}`), "Text");
+  }
+  for (const literal of ["&lt;!-- telegram_voice {Example.} --&gt;", "< !-- telegram_voice {Invalid.} -->"]) {
+    assert.deepEqual(collectTelegramHtmlComments(literal).comments, []);
+    assert.equal(planTelegramVoiceReply(literal).voiceReplies, undefined);
+  }
 });
 
 test("Markup stripping removes every HTML comment from Telegram surfaces", () => {

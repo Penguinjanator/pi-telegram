@@ -86,7 +86,7 @@ test("Bundled source Skills remain focused and self-contained", async () => {
   assert.match(bridge, /Disabled controls.*no callback, queued prompt, or bound-method invocation/u);
   assert.match(
     bridge,
-    /removes every assistant-authored HTML comment.*only recognized top-level wrappers activate actions/su,
+    /removes every assistant-authored HTML comment.*only complete recognized comments or valid button fences activate actions/su,
   );
   assert.match(
     bridge,
