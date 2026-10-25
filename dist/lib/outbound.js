@@ -412,10 +412,10 @@ export function createTelegramOutboundReplyPlanner(store, getRenderingMode = () 
             rendering: getRenderingMode(),
             ...(options?.binding ? { binding: options.binding } : {}),
         });
-        // Button replies can also contain <!-- telegram_voice --> markup
-        const voiceReply = planTelegramVoiceReply(buttonReply.markdown);
+        // Extract voice from the original text before button-fence rendering consumes it.
+        const voiceReply = planTelegramVoiceReply(markdown);
         return {
-            markdown: voiceReply.markdown,
+            markdown: stripTelegramCommentMarkupForDelivery(buttonReply.markdown),
             ...(buttonReply.replyMarkup
                 ? { replyMarkup: buttonReply.replyMarkup }
                 : {}),

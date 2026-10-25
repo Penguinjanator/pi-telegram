@@ -4,6 +4,11 @@
 
 ## Unreleased
 
+## 0.58.2: Flexible Assistant Action Markup
+
+- `HTML actions`: Complete button/voice comments activate by their delimiters and accepted payload regardless of whitespace or surrounding Markdown, including code fences. Adjacent same-line comments are independent; unfinished comments do not activate. Escape the opening delimiter as `&lt;!--` for literal examples.
+- `In-body buttons`: Fenced `telegram_button` blocks tolerate horizontal indentation, whitespace before the exact name, and three or more backticks or tildes. Closures require the same marker and at least the opening length on a separate line. Enclosing fenced examples remain literal; incomplete blocks, malformed JSON/CML and invalid rows still register no callbacks.
+
 ## 0.58.1: Independent Thread Typing
 
 - `Typing`: A pending activity request in one Thread no longer silently suppresses another Thread's typing. Exact chat/Thread/action calls still coalesce with their own minimum interval, while real Telegram 429 cooldowns remain shared across the chat, including late failures after a faster peer completes. Authority checks, one-attempt typing and bounded gate storage remain intact.

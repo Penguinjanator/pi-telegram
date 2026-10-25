@@ -158,13 +158,85 @@ test("Fenced singleton JSON/CML cells are equivalent and labels cannot inject Ri
   assert.match(plan.markdown, /&#60;/u);
 });
 
+test("Fenced button delimiters tolerate horizontal whitespace, marker type and length", () => {
+  for (const rendering of ["rich", "html"] as const) {
+    for (const payload of ['{Run|Do it.}', '{"label":"Run","prompt":"Do it."}']) {
+      const plan = (markdown: string) => planTelegramButtonReply(markdown, {
+        rendering,
+        registerAction: (action) => {
+          assert.deepEqual(action, { text: "Run", prompt: "Do it." });
+          return "tgbtn:test";
+        },
+      });
+      const canonical = plan(`Before\n\`\`\`telegram_button\n${payload}\n\`\`\`\nAfter`);
+      for (const marker of ["`", "~"]) {
+        for (const length of [3, 5]) {
+          for (const indent of ["", "    ", " \t"]) {
+            for (const gap of ["", " \t"]) {
+              for (const newline of ["\n", "\r\n"]) {
+                const source = ["Before", `${indent}${marker.repeat(length)}${gap}telegram_button \t`,
+                  `${indent}${payload}`, `\t${marker.repeat(length + 1)} \t`, "After"].join(newline);
+                const actual = plan(source);
+                assert.deepEqual({ ...actual, markdown: actual.markdown.replace(/\r\n/g, "\n") }, canonical, source);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+});
+
+test("Fenced button closure must match the opening marker and minimum length", () => {
+  for (const [opening, closing] of [
+    ["```` telegram_button", "```"],
+    ["~~~ telegram_button", "```"],
+    ["``` telegram_button", "~~~"],
+    ["~~~~ telegram_button", "~~~"],
+    ["``` telegram_button", "``` trailing"],
+    ["``` telegram_button", "Text ```"],
+  ]) {
+    const plan = planTelegramButtonReply(`${opening}\n{Run|Do it.}\n${closing}`, {
+      registerAction: () => assert.fail("Mismatched closing delimiter registered a callback"),
+    });
+    assert.equal(plan.markdown, "");
+    assert.equal(plan.replyMarkup, undefined);
+  }
+  for (const marker of ["`", "~"]) {
+    const plan = planTelegramButtonReply(`  ${marker.repeat(4)} telegram_button\n[{Valid|one}{Broken|}]\n${marker.repeat(5)}`, {
+      registerAction: () => assert.fail("Relaxed wrapper bypassed payload validation"),
+    });
+    assert.equal(plan.markdown, "");
+    assert.equal(plan.replyMarkup, undefined);
+  }
+});
+
+test("Indented outer fences protect examples and parsing resumes after their closure", () => {
+  for (const marker of ["`", "~"]) {
+    for (const indent of [" ", "    ", "\t"]) {
+      const example = `${indent}${marker.repeat(4)} markdown\n  ~~~ telegram_button\n{Example|Do not queue.}\n  ~~~\n${indent}${marker.repeat(4)}`;
+      const actions: unknown[] = [];
+      const plan = planTelegramButtonReply(`${example}\n\n\t\`\`\`\` telegram_button\n{Run|Do it.}\n\`\`\`\``, {
+        registerAction: (action) => { actions.push(action); return "tgbtn:test"; },
+      });
+      assert.deepEqual(actions, [{ text: "Run", prompt: "Do it." }]);
+      assert.ok(plan.markdown.startsWith(example.trimStart()));
+      assert.equal((plan.markdown.match(/<tg-button-row>/g) ?? []).length, 1);
+    }
+  }
+});
+
 test("Only complete standalone exact-name fences activate; examples remain literal", () => {
   for (const source of [
     '````markdown\n```telegram_button\n{Run}\n```\n````',
     '~~~markdown\n```telegram_button\n{Run}\n```\n~~~',
     '```text\n```telegram_button\n{Run}\n```',
     '> ```telegram_button\n> {Run}\n> ```',
-    '    ```telegram_button\n    {Run}\n    ```',
+    '- ```telegram_button\n  {Run}\n  ```',
+    'Text ```telegram_button\n{Run}\n```',
+    '```telegram_buttons\n{Run}\n```',
+    '```TELEGRAM_BUTTON\n{Run}\n```',
+    '``telegram_button\n{Run}\n``',
     '```telegram_button_extra\n{Run}\n```',
     '```telegram_button extra\n{Run}\n```',
     'Text <!--\n```telegram_button\n{Run}\n```\n-->',
@@ -178,7 +250,6 @@ test("Only complete standalone exact-name fences activate; examples remain liter
     '```telegram_button\n{Run}',
     '```telegram_button\n[{Valid}{Bad|}]\n```',
     '```telegram_button\n{Run} trailing\n```',
-    '```telegram_button\n<!-- telegram_button {Run} -->\n```',
     '```telegram_button\n[[' + Array(9).fill('{Run}').join('') + ']]\n```',
     '```telegram_button\n{' + 'x'.repeat(32768) + '}\n```',
   ]) {
@@ -250,6 +321,43 @@ test("Button reply planner strips telegram_button markup and registers actions",
   assert.deepEqual(plan.replyMarkup, {
     inline_keyboard: [[{ text: "Run", callback_data: "btn:1" }]],
   });
+});
+
+test("Footer buttons ignore horizontal indentation in both rendering modes", () => {
+  for (const rendering of ["rich", "html"] as const) {
+    for (const prefix of ["", " ", "   ", "    ", "\t", " \t  "]) {
+      for (const payload of ['{📋 Карта владельцев|Покажи карту тестов.}', '{"label":"📋 Карта владельцев","prompt":"Покажи карту тестов."}']) {
+        const actions: unknown[] = [];
+        const plan = planTelegramButtonReply(`Before\r\n${prefix}<!-- telegram_button ${payload} -->\r\nAfter`, {
+          rendering,
+          registerAction: (action) => { actions.push(action); return "tgbtn:test"; },
+        });
+        assert.deepEqual(actions, [{ text: "📋 Карта владельцев", prompt: "Покажи карту тестов." }]);
+        assert.deepEqual(plan.replyMarkup, { inline_keyboard: [[{ text: "📋 Карта владельцев", callback_data: "tgbtn:test" }]] });
+        assert.doesNotMatch(plan.markdown, /<!--|-->/u);
+      }
+    }
+  }
+});
+
+test("Footer buttons activate independently of surrounding Markdown and same-line neighbors", () => {
+  const raw = '<!-- telegram_button {Run|Do it.} -->';
+  for (const [before, after] of [
+    ["Text ", " tail"], ["> ", ""], ["  - ", ""], ["1. ", ""],
+    ["`", "`"], ["```md\n", "\n```"], ["    ```\n", "\n    ```"],
+  ]) {
+    const actions: unknown[] = [];
+    const plan = planTelegramButtonReply(before + raw + raw + after, {
+      registerAction: (action) => { actions.push(action); return `tgbtn:${actions.length}`; },
+    });
+    assert.deepEqual(actions, [{ text: "Run", prompt: "Do it." }, { text: "Run", prompt: "Do it." }]);
+    assert.equal(plan.replyMarkup?.inline_keyboard.length, 2);
+    assert.doesNotMatch(plan.markdown, /<!--|-->/u);
+  }
+  const plan = planTelegramButtonReply('```telegram_button\n<!-- telegram_button {Run|Do it.} -->\n```', {
+    registerAction: () => "tgbtn:test",
+  });
+  assert.equal(plan.replyMarkup?.inline_keyboard[0]?.[0]?.text, "Run");
 });
 
 test("Button reply planner retains legacy attribute compatibility", () => {

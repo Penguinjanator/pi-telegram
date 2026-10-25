@@ -16,12 +16,12 @@ Use Telegram as a mobile companion to the current Pi session. Preserve the exact
 | Explicitly send from local/TUI to Telegram | `telegram_message` or `telegram_attach` |
 | Explicitly send to a different live Thread | `telegram_message(thread=...)` |
 | Add buttons | Hidden comment for footer; `telegram_button` fence for in-body rows |
-| Add explicit voice | Top-level hidden action comment |
+| Add explicit voice | Hidden action comment |
 | Build a repeated deterministic interaction | Follow `generative-apps` |
 
 A connected Telegram session proves capability, not user intent. Use Telegram features on Telegram-originated turns or explicit Telegram delivery requests only. Never call `telegram_message` for the current active target.
 
-For direct delivery, Thread routing, configuration, or diagnosis, read only the applicable reference listed under [Conditional References](#conditional-references).
+For delivery, Thread routing, configuration or diagnosis, read the applicable reference under [Conditional References](#conditional-references).
 
 ## Turn Context
 
@@ -40,7 +40,7 @@ Reply in concise, phone-width Telegram Rich Markdown. Use `$...$` and `$$...$$` 
 
 ## Assistant Actions
 
-`telegram_button` and `telegram_voice` are markup, not tools. Emit action comments at column zero outside lists, quotes, code, and indentation. Comments create footer buttons or voice artifacts. For buttons between paragraphs, use a column-zero triple-backtick `telegram_button` block. Both button wrappers accept the same singleton JSON/CML cell or mixed matrix; the wrapper determines placement. Telegram removes every assistant-authored HTML comment from previews and final replies regardless of owner or Markdown position; only recognized top-level wrappers activate actions; comment-only output sends no text message.
+`telegram_button` and `telegram_voice` are markup, not tools. Complete comments activate regardless of surrounding Markdown. Escape `<!--` as `&lt;!--` for literal examples; backticks and backslashes do not disable actions. Comments create footer buttons or voice artifacts. In-body fences: ≥3 backticks/tildes, optional indentation/whitespace, exact `telegram_button`; separate same-marker closure, no shorter. Both wrappers accept a singleton JSON/CML cell or mixed matrix; the wrapper determines placement. Telegram removes every assistant-authored HTML comment from previews and final replies regardless of owner or Markdown position; only complete recognized comments or valid button fences activate actions; comment-only output sends no text message.
 
 ### Shared Encoding Rule
 
@@ -61,7 +61,7 @@ Every enabled button has a self-contained prompt and an optional selection style
 - `{label|prompt|selected_style}` and `{|prompt|selected_style}` accept `primary`, `success`, or `danger`.
 - Fourth-position `1`/`true` disables, `0`/`false` enables; omission means enabled. JSON uses boolean `disabled`. `{|Next||1}` omits label/style; `{Next|||1}` omits prompt/style; `{|||1}` is blank (Telegram receives a non-breaking space). Prefer meaningful labels and retain a useful enabled action. Enabled CML requires a prompt. Disabled controls stay visible but have no callback, queued prompt, or bound-method invocation.
 - Both wrappers concatenate rows from adjacent JSON/CML cells or matrices, with optional commas. Cells are vertical; horizontal peers require a nested row: `[[{A|a}{B|b}]]`.
-- Prefer one matrix per related group. Fenced blocks stay in place in Rich mode; HTML compatibility moves them to the footer. Native rows allow eight buttons. Malformed/oversized/unclosed blocks activate nothing; drafts hide them. Outer code fences and quoted/indented examples remain literal.
+- Prefer one matrix per related group. Fenced blocks stay in place in Rich mode; HTML compatibility moves them to the footer. Native rows allow eight buttons. Malformed/oversized/unclosed blocks activate nothing; drafts hide them. Enclosing code fences and quoted/list-prefixed button fences remain literal.
 - Both placements share prompt/app routing. In-body clicks acknowledge without recoloring; selected-style highlighting remains footer-only.
 
 A single in-body button (the four-backtick wrapper below makes this a literal example):
@@ -124,6 +124,6 @@ Before replying:
 
 - Use the ordinary path for the current target and direct tools only for explicit other delivery.
 - Attach requested files rather than only mentioning them.
-- Keep action comments and button fences top-level, complete, and canonical: CML first, JSON when necessary; either syntax may coexist within one matrix.
+- Keep comments complete and button fences top-level and canonical: CML first, JSON when necessary; either syntax may coexist within one matrix.
 - Give every enabled button a self-contained prompt; preserve confirmation for dangerous actions.
 - Expose no secret or hidden reasoning.
