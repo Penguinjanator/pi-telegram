@@ -9,7 +9,7 @@ import test from "node:test";
 import { createTelegramBusAwareApiRuntime, createTelegramSelectedMenuTextApi } from "../lib/bus-api.ts";
 import { createTelegramExtensionSectionRegistry, handleTelegramSectionCallback, type TelegramSectionRuntimeDeps } from "../lib/sections.ts";
 import { createTelegramBusLeaderApiProxy } from "../lib/bus-leader.ts";
-import { callTelegram, createTelegramApiClient, createTelegramBridgeApiRuntime, setTelegramApiHttpsFetchForTesting, type TelegramBridgeApiRuntime, type TelegramApiCallOptions } from "../lib/telegram-api.ts";
+import { assertTelegramApiCallAuthority, callTelegram, createTelegramApiClient, createTelegramBridgeApiRuntime, setTelegramApiHttpsFetchForTesting, TelegramApiAuthorityError, type TelegramBridgeApiRuntime, type TelegramApiCallOptions } from "../lib/telegram-api.ts";
 import { captureTelegramStaleTargetRequestRecovery, type TelegramSyncState } from "../lib/sync.ts";
 import type { TelegramTopicTargetRecord } from "../lib/threads.ts";
 import { createTelegramTypingLoop, createTelegramTypingLoopStarter } from "../lib/runtime.ts";
@@ -61,6 +61,66 @@ for (const direct of [true, false]) for (const threaded of [true, false]) for (c
       assert.equal(calls.length, 2, "Fresh context owns its own attempt; old failure cannot stop the replacement");
       assert.equal(typing.stop(), true);
     } finally { typing.stop(); restoreHttps(); globalThis.fetch = previousFetch; }
+  });
+}
+
+for (const direct of [true, false]) for (const threaded of [true, false]) for (const end of ["stop", "same-target-replacement"] as const) {
+  test(`Expired typing loops keep late success fenced without API noise (direct=${direct}, threaded=${threaded}, end=${end})`, async (t) => {
+    t.mock.timers.enable({ apis: ["setInterval"] });
+    const issued = Promise.withResolvers<void>(), response = Promise.withResolvers<void>(), settled = Promise.withResolvers<void>();
+    const calls: unknown[] = [], payloads: unknown[] = [], apiErrors: unknown[] = [], typingErrors: unknown[] = [], outcomes: unknown[] = [];
+    const typing = createTelegramTypingLoop(), ctx = {};
+    let nowMs = 1000;
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = async (_input, init) => {
+      calls.push(JSON.parse(String(init?.body)));
+      if (calls.length === 1) { issued.resolve(); await response.promise; }
+      return new Response(JSON.stringify({ ok: true, result: true }), { status: 200 });
+    };
+    const restoreHttps = setTelegramApiHttpsFetchForTesting(globalThis.fetch);
+    const directRuntime = createTelegramBridgeApiRuntime({ client: createTelegramApiClient(() => "123:fixture", { isThreadedMode: () => threaded }),
+      tempDir: "/tmp", maxFileSizeBytes: 1, tempFileMaxAgeMs: 1, now: () => nowMs, recordRuntimeEvent(_category, error) { apiErrors.push(error); } });
+    const proxy = createTelegramBusLeaderApiProxy({ call: directRuntime.call, callMultipart: directRuntime.callMultipart, downloadFile: directRuntime.downloadFile });
+    const api = createTelegramBusAwareApiRuntime({ directRuntime, ownsDirect: () => direct,
+      async callFollowerApi(method, args, localOptions) {
+        assert.deepEqual(Object.keys(localOptions ?? {}), ["assertAuthority"]);
+        assertTelegramApiCallAuthority(localOptions?.assertAuthority, false);
+        const wire = structuredClone(args); payloads.push(wire);
+        const result = await proxy(method, wire);
+        assertTelegramApiCallAuthority(localOptions?.assertAuthority, true);
+        return result;
+      } });
+    const start = createTelegramTypingLoopStarter({
+      typing, getDefaultChatId: () => 7, isContextActive: () => true, getSessionGeneration: () => 1,
+      getTransportAuthority: () => "unchanged", isThreadedMode: () => threaded,
+      failureLog: createPassthroughFailureLog(error => typingErrors.push(error)),
+      async sendTypingAction(chatId, options) {
+        try { const result = await api.sendTypingAction(chatId, options); outcomes.push(result); return result; }
+        catch (error) { outcomes.push(error); throw error; }
+        finally { settled.resolve(); }
+      },
+      updateStatus() { assert.fail("Typing cannot change connection status"); },
+    });
+    const target = { chatId: 7, ...(threaded ? { threadId: 42 } : {}) };
+    try {
+      start(ctx, 7, { target }); await issued.promise;
+      if (end === "stop") typing.stop(); else start(ctx, 7, { target });
+      response.resolve(); await settled.promise; await new Promise<void>(resolve => setImmediate(resolve));
+      assert.equal(calls.length, 1);
+      assert.ok(outcomes[0] instanceof TelegramApiAuthorityError, "A late HTTP success is not current-owner success");
+      assert.equal(outcomes[0].requestIssued, true);
+      assert.deepEqual(apiErrors, [], "Expired-loop authority refusal is expected cancellation, not an API failure");
+      assert.deepEqual(typingErrors, []);
+      nowMs += 3000;
+      t.mock.timers.tick(3000); await new Promise<void>(resolve => setImmediate(resolve));
+      assert.equal(calls.length, end === "stop" ? 1 : 2, "Only a fresh loop can issue another request");
+      if (end !== "stop") assert.equal(outcomes[1], true);
+      assert.deepEqual(apiErrors, []);
+      assert.deepEqual(typingErrors, []);
+      assert.equal(typing.stop(), end !== "stop");
+      assert.deepEqual(calls[0], { chat_id: 7, action: "typing", ...(threaded ? { message_thread_id: 42 } : {}) });
+      assert.deepEqual(payloads, direct ? [] : calls.map(body => ["sendChatAction", body, { maxAttempts: 1, retrySafety: "non-idempotent" }]));
+    } finally { response.resolve(); typing.stop(); restoreHttps(); globalThis.fetch = previousFetch; }
   });
 }
 

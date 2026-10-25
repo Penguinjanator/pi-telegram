@@ -795,6 +795,57 @@ test("Telegram bridge API runtime leaves caller-owned expected failures to the c
   assert.equal(logged.length, 1, "an unexpected failure keeps the API diagnostic");
 });
 
+for (const cancelled of [false, true]) for (const kind of ["authority", "http", "network"] as const) for (const requestIssued of kind === "authority" ? [false, true] : [true]) {
+  test(`Typing cancellation suppresses only obsolete authority diagnostics (cancelled=${cancelled}, kind=${kind}, issued=${requestIssued})`, async () => {
+    const error = kind === "authority" ? new TelegramApiAuthorityError(requestIssued)
+      : kind === "http" ? new Error("HTTP 500 fixture") : new TypeError("fetch failed");
+    const logged: unknown[] = [];
+    const runtime = createTelegramBridgeApiRuntime({
+      client: createApiRuntimeClient({ call: async (_method, _body, options) => {
+        assert.equal(options?.maxAttempts, 1);
+        throw error;
+      } }),
+      tempDir: "/tmp", maxFileSizeBytes: 1, tempFileMaxAgeMs: 1,
+      recordRuntimeEvent: (_category, failure) => logged.push(failure),
+    });
+    await assert.rejects(runtime.sendTypingAction(7, { isCancelled: () => cancelled }), failure => failure === error);
+    assert.deepEqual(logged, cancelled && kind === "authority" ? [] : [error]);
+  });
+}
+
+for (const kind of ["http", "network"] as const) {
+  test(`Typing cancellation preserves real-client late ${kind} failure diagnostics`, async () => {
+    const issued = Promise.withResolvers<void>(), response = Promise.withResolvers<void>();
+    const logged: unknown[] = [];
+    let cancelled = false, calls = 0;
+    const networkError = new TypeError("fetch failed");
+    const restoreFetch = setApiTestFetch(async () => {
+      calls++; issued.resolve(); await response.promise;
+      if (kind === "network") throw networkError;
+      return createApiErrorResponse(500, "late failure fixture");
+    });
+    const runtime = createTelegramBridgeApiRuntime({ client: createTelegramApiClient(() => "123:fixture"),
+      tempDir: "/tmp", maxFileSizeBytes: 1, tempFileMaxAgeMs: 1,
+      recordRuntimeEvent(_category, error) { logged.push(error); } });
+    try {
+      const request = runtime.sendTypingAction(7, {
+        assertAuthority() { if (cancelled) throw new Error("Loop ended"); },
+        isCancelled: () => cancelled,
+      });
+      await issued.promise; cancelled = true; response.resolve();
+      const error = await request.catch((failure: unknown) => failure);
+      assert.ok(error instanceof TelegramApiAuthorityError);
+      assert.equal(error.requestIssued, true);
+      assert.equal(calls, 1, "Cancellation cannot grant an HTTP retry");
+      assert.equal(isTelegramApiCommitUnknownError(error), false);
+      assert.equal(logged.length, 1, "Underlying transport failure must remain diagnostic");
+      assert.equal(logged[0], error.cause);
+      if (kind === "network") assert.equal(error.cause, networkError);
+      else assert.match(String(error.cause), /HTTP 500.*late failure fixture/u);
+    } finally { response.resolve(); restoreFetch(); }
+  });
+}
+
 test("Telegram bridge API runtime owns reply-markup edits", async () => {
   const calls: Array<{ method: string; body: Record<string, unknown> }> = [];
   const runtime = createTelegramBridgeApiRuntime({

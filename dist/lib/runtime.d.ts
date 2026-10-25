@@ -119,6 +119,7 @@ export interface TelegramTypingLoopStarterDeps<TContext> extends TelegramRuntime
     sendTypingAction: (chatId: number, options?: {
         message_thread_id?: number;
         assertAuthority?: () => void;
+        isCancelled?: () => boolean;
     }) => Promise<unknown>;
     updateStatus: (ctx: TContext, error?: string) => void;
     isContextActive?: (ctx: TContext) => boolean;

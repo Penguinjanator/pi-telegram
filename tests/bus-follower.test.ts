@@ -4394,6 +4394,29 @@ for (const phase of ["waiting", "connecting", "current"] as const) {
   });
 }
 
+test("Follower typing authority refuses a late native acknowledgement without replay", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pi-telegram-typing-late-ack-")), socketPath = join(dir, "bus.sock");
+  const issued = Promise.withResolvers<void>(), response = Promise.withResolvers<void>();
+  const received: unknown[] = [];
+  let current = true;
+  const server = createTelegramBusLocalServer({ socketPath, async handleEnvelope(envelope) {
+    received.push(envelope); issued.resolve(); await response.promise;
+    return { kind: "bus.ack", requestId: envelope.requestId, ok: true, result: true };
+  } });
+  const callApi = createTelegramBusFollowerApiCaller({ socketPath, instanceId: "instance", createRequestId: () => "typing:late",
+    getRegistrationGeneration: () => "registration", getAuthSecret: () => "fixture-secret" });
+  const args = ["sendChatAction", { chat_id: 7, message_thread_id: 42, action: "typing" }, { maxAttempts: 1, retrySafety: "non-idempotent" }];
+  try {
+    await server.start();
+    const request = callApi("call", args, { assertAuthority() { if (!current) throw new Error("Loop ended"); } });
+    await issued.promise; current = false; response.resolve();
+    await assert.rejects(request, error => error instanceof TelegramApiAuthorityError && error.requestIssued);
+    assert.equal(received.length, 1);
+    assert.deepEqual((received[0] as { args: unknown[] }).args, args);
+    assert.equal(JSON.stringify(received).includes("assertAuthority"), false);
+  } finally { response.resolve(); await server.stop(); rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("Bus follower API calls wait for heartbeat recovery before transport", async () => {
   const dir = mkdtempSync(join(tmpdir(), "pi-telegram-bus-api-recovery-"));
   const socketPath = join(dir, "bus.sock");

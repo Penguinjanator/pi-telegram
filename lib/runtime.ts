@@ -360,7 +360,7 @@ export interface TelegramTypingLoopStarterDeps<
   getDefaultChatId: () => number | undefined;
   sendTypingAction: (
     chatId: number,
-    options?: { message_thread_id?: number; assertAuthority?: () => void },
+    options?: { message_thread_id?: number; assertAuthority?: () => void; isCancelled?: () => boolean },
   ) => Promise<unknown>;
   updateStatus: (ctx: TContext, error?: string) => void;
   isContextActive?: (ctx: TContext) => boolean;
@@ -454,6 +454,7 @@ export function createTelegramTypingLoopStarter<TContext>(
         try {
           await deps.sendTypingAction(targetChatId, {
             ...actionOptions,
+            isCancelled: () => !active,
             // This stays process-local; adapters recheck it before HTTP/IPC issuance, not just loop ticks.
             assertAuthority() {
               if (!active || !canContinue()) throw new Error("Typing context authority changed.");

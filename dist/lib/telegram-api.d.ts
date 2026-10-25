@@ -304,10 +304,10 @@ export interface TelegramApiCallOptions {
 }
 export declare class TelegramApiAuthorityError extends Error {
     readonly requestIssued: boolean;
-    constructor(requestIssued: boolean);
+    constructor(requestIssued: boolean, options?: ErrorOptions);
 }
 /** Recheck caller authority, classifying refusal by whether a Bot API request was already issued. */
-export declare function assertTelegramApiCallAuthority(assertAuthority: (() => void) | undefined, requestIssued: boolean): void;
+export declare function assertTelegramApiCallAuthority(assertAuthority: (() => void) | undefined, requestIssued: boolean, errorOptions?: ErrorOptions): void;
 export interface TelegramFileDownloadOptions {
     signal?: AbortSignal;
     maxFileSizeBytes?: number;
@@ -444,6 +444,8 @@ export interface TelegramBridgeApiRuntimeDeps {
 /** Typing issuance guard is local authority, never Bot API body or IPC data. */
 export interface TelegramTypingActionOptions extends Pick<TelegramApiCallOptions, "assertAuthority"> {
     message_thread_id?: number;
+    /** Diagnostic observation only: an ended loop does not grant issuance, success or retry. */
+    isCancelled?: () => boolean;
 }
 export interface TelegramBridgeApiRuntime extends Pick<TelegramApiClient, "call" | "callMultipart"> {
     downloadFile: (fileId: string, suggestedName: string, source?: TelegramAttachmentSource) => Promise<string>;
