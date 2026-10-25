@@ -4,6 +4,11 @@
 
 ## Unreleased
 
+## 0.58.3: Typing Cancellation Diagnostics
+
+- `Typing diagnostics`: Ended typing loops no longer log cancellation-only authority refusals as API failures. Real HTTP/network failures retain their provenance and diagnostics even if authority expires before settlement. Requests remain rejected and single-attempt; callbacks stay local. Native late-success/failure and follower-ACK regressions cover this case, not the cause of the live report.
+- `Prompt-cache acceptance`: Reporter-provided live Anthropic captures and connected-session measurements confirm the released fix across tool changes, resume, local/Telegram switches and reconnect, with no new thinking drops in the tested runs. The remaining live-confirmation gate is closed; connected wire capture and broader model/cache-expiry coverage remain outside this evidence. Already-lost thinking is not reconstructed.
+
 ## 0.58.2: Flexible Assistant Action Markup
 
 - `HTML actions`: Complete button/voice comments activate by their delimiters and accepted payload regardless of whitespace or surrounding Markdown, including code fences. Adjacent same-line comments are independent; unfinished comments do not activate. Escape the opening delimiter as `&lt;!--` for literal examples.

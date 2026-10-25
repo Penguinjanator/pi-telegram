@@ -236,6 +236,7 @@ export function createTelegramTypingLoopStarter(deps) {
                 try {
                     await deps.sendTypingAction(targetChatId, {
                         ...actionOptions,
+                        isCancelled: () => !active,
                         // This stays process-local; adapters recheck it before HTTP/IPC issuance, not just loop ticks.
                         assertAuthority() {
                             if (!active || !canContinue())

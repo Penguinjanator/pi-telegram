@@ -7,11 +7,14 @@ _This file owns unresolved project work only. Completed behavior belongs in `CHA
 - [ ] After separate operator authorization, use disposable Telegram tabs to check leader Settings review/Back, one confirmed cleanup of an inactive slotless binding, preservation of its replacement letter holder, and visible outcome/recovery copy. Native filesystem and injected-transport tests do not prove live Telegram/client or native Windows acceptance. Never use production history as the disposable fixture.
 - [ ] On separately authorized disposable routing tabs, verify pending-choice protection, Cancel after the view becomes unavailable, expiry notice in the owned leader Thread and no duplicate deletion after an unknown outcome. Local native journal/API-decoder fixtures are not live client acceptance.
 
-## Prompt-cache live confirmation
+## Typing authority during Telegram turns
 
-The prompt-cache report remains open for the reporter's offered live Anthropic capture after the published fix. Native request/transcript checks do not replace cache-hit or signed-thinking measurements.
+Live report on package 0.58.2 and Pi 1.4.0: every Telegram turn logged `sendChatAction: Telegram API call authority is unavailable` in a connected, long-lived session. The reporter's leader/follower role and refusal stage are not yet known. Prompt-cache acceptance is complete; this is a separate typing-indicator investigation.
 
-- [ ] Review the reporter's resume and mid-session tool-change results (versions, cache read/write counts and new thinking-drop events). Close the report if the live evidence confirms the fix, or narrow any residual failure into actionable follow-up. Do not reconstruct or claim recovery of previously lost thinking blocks.
+The native expired-loop diagnostic case is corrected: real typing loop/starter, direct API runtime and API client regressions cover mocked HTTP 200 after stop/same-target replacement, with unchanged session generation and transport epoch. A process-local ended-loop observation suppresses only the corresponding typed authority diagnostic; the request still rejects, active-owner refusals remain visible, and no callback crosses IPC. Real-client regressions retain the original HTTP/network failure when authority expires during error handling; a native follower caller rejects a delayed ACK after its local owner ends, without replay. Direct/follower and Classic/Threaded paths remain distinct from live acceptance. This does not establish the cause of the reporter's live failure or prove client typing.
+
+- [ ] Correlate the live report with the corrected native case using only redacted leader/follower role, timing around loop end/replacement and refusal-stage evidence if available. Do not infer transport loss or widen authority from the error string alone; isolate any distinct current-owner refusal before another runtime change.
+- [ ] After separately approved live validation, confirm client typing and absence of expired-loop API noise across Telegram turns and loop replacement. Preserve exact Thread targeting, independent Thread requests, best-effort presence and no unhealthy-status escalation; local native fixtures are not live acceptance.
 
 ## Stuck forwarded command after Thread re-creation
 

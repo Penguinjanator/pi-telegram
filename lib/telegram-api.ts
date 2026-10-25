@@ -407,8 +407,8 @@ export interface TelegramApiCallOptions {
 
 export class TelegramApiAuthorityError extends Error {
   readonly requestIssued: boolean;
-  constructor(requestIssued: boolean) {
-    super("Telegram API call authority is unavailable.");
+  constructor(requestIssued: boolean, options?: ErrorOptions) {
+    super("Telegram API call authority is unavailable.", options);
     this.name = "TelegramApiAuthorityError";
     this.requestIssued = requestIssued;
   }
@@ -418,11 +418,12 @@ export class TelegramApiAuthorityError extends Error {
 export function assertTelegramApiCallAuthority(
   assertAuthority: (() => void) | undefined,
   requestIssued: boolean,
+  errorOptions?: ErrorOptions,
 ): void {
   try {
     assertAuthority?.();
   } catch {
-    throw new TelegramApiAuthorityError(requestIssued);
+    throw new TelegramApiAuthorityError(requestIssued, errorOptions);
   }
 }
 
@@ -847,6 +848,8 @@ export interface TelegramBridgeApiRuntimeDeps {
 /** Typing issuance guard is local authority, never Bot API body or IPC data. */
 export interface TelegramTypingActionOptions extends Pick<TelegramApiCallOptions, "assertAuthority"> {
   message_thread_id?: number;
+  /** Diagnostic observation only: an ended loop does not grant issuance, success or retry. */
+  isCancelled?: () => boolean;
 }
 
 export interface TelegramBridgeApiRuntime extends Pick<
@@ -1649,7 +1652,7 @@ async function callTelegramWithRetry<TResponse>(
     } catch (error) {
       // Authority refusal is never a transport failure, retry grant or acknowledged success.
       if (error instanceof TelegramApiAuthorityError) throw error;
-      assertTelegramApiCallAuthority(assertAuthority, requestIssued);
+      assertTelegramApiCallAuthority(assertAuthority, requestIssued, { cause: error });
       const retryable =
         isRetryableTelegramApiError(error) &&
         !(
@@ -2189,11 +2192,14 @@ export function createTelegramBridgeApiRuntime(
             );
             return true as TResponse;
           }
-          deps.recordRuntimeEvent(
-            "api",
-            error,
-            withTelegramTransportDiagnostics(error, { method }),
-          );
+          const diagnosticError = error instanceof TelegramApiAuthorityError && Object.hasOwn(error, "cause")
+            ? error.cause : error;
+          if (!options?.isExpectedError?.(error))
+            deps.recordRuntimeEvent(
+              "api",
+              diagnosticError,
+              withTelegramTransportDiagnostics(diagnosticError, { method }),
+            );
           throw error;
         })
         .finally(() => {
@@ -2311,14 +2317,21 @@ export function createTelegramBridgeApiRuntime(
           : {}),
       }),
     sendTypingAction: createTelegramChatActionSender(
-      (chatId, action, options) =>
-        callRecorded<boolean>("sendChatAction", {
+      (chatId, action, options) => {
+        const isCancelled = options?.isCancelled;
+        return callRecorded<boolean>("sendChatAction", {
           chat_id: chatId,
           action,
           ...(options?.message_thread_id !== undefined
             ? { message_thread_id: options.message_thread_id }
             : {}),
-        }, { assertAuthority: options?.assertAuthority }),
+        }, {
+          assertAuthority: options?.assertAuthority,
+          ...(isCancelled ? {
+            isExpectedError: (error: unknown) => error instanceof TelegramApiAuthorityError && !Object.hasOwn(error, "cause") && isCancelled() === true,
+          } : {}),
+        });
+      },
       "typing",
     ),
     sendRecordVoiceAction: createTelegramChatActionSender(
